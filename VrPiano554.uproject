@@ -33,42 +33,20 @@
 			"Enabled": true
 		},
 		{
-			"Name": "OpenXRHandTracking",
-			"Enabled": true,
-			"SupportedTargetPlatforms": [
-				"Win64",
-				"Linux",
-				"Android"
-			]
-		},
-		{
-			"Name": "OpenXREyeTracker",
-			"Enabled": true,
-			"SupportedTargetPlatforms": [
-				"Win64",
-				"Linux",
-				"Android"
-			]
-		},
-		{
-			"Name": "OpenXRMsftHandInteraction",
-			"Enabled": true,
-			"SupportedTargetPlatforms": [
-				"Win64",
-				"Android"
-			]
-		},
-		{
-			"Name": "Harmonix",
-			"Enabled": true
-		},
-		{
 			"Name": "HarmonixMidi",
 			"Enabled": false
 		},
 		{
 			"Name": "LudusAI",
 			"Enabled": true
+		},
+		{
+			"Name": "Bridge",
+			"Enabled": false
+		},
+		{
+			"Name": "Metasound",
+			"Enabled": false
 		}
 	],
 	"TargetPlatforms": [

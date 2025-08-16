@@ -97,6 +97,7 @@ public:
 
 private:
     void LoadMidiFile();
+    void SetupControllers();
 
     ECalibrationState CalibrationState;
     FTransform LeftCalibrationTransform;
@@ -106,4 +107,10 @@ private:
 
     // Map to store original materials of highlighted keys
     TMap<int32, UMaterialInterface*> OriginalKeyMaterials;
+
+    // Offset calculated at runtime to center the piano model
+    FVector CalculatedOffset;
+
+    UPROPERTY(VisibleAnywhere)
+    UStaticMeshComponent* DebugCylinder;
 };

@@ -40,7 +40,7 @@ void AUDPMidiReceiver::BeginPlay()
 
         if (ListenSocket->Bind(*Addr))
         {
-            UE_LOG(LogTemp, Log, TEXT("UDP Receiver: Socket bound to port 55454."));
+            UE_LOG(LogTemp, Log, TEXT("UDP Receiver: Socket bound to port %d."), Addr->GetPort());
         }
         else
         {

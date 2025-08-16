@@ -9,6 +9,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "MotionControllerComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 APianoActor::APianoActor()
 {
@@ -34,6 +35,26 @@ APianoActor::APianoActor()
     Connectique = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("connectique"));
     Connectique->SetupAttachment(RootComponent);
 
+    // Create and configure the debug cylinder
+    DebugCylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DebugCalibrationCylinder"));
+    DebugCylinder->SetupAttachment(RootComponent);
+    DebugCylinder->SetVisibility(true); // Make it visible by default for debugging
+    DebugCylinder->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    DebugCylinder->SetRelativeLocation(FVector(50.f, 0.f, 0.f)); // Move it in front of the piano model
+
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderAsset(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (CylinderAsset.Succeeded())
+    {
+        DebugCylinder->SetStaticMesh(CylinderAsset.Object);
+        DebugCylinder->SetRelativeScale3D(FVector(0.05f, 0.05f, 10.0f));
+    }
+
+    static ConstructorHelpers::FObjectFinder<UMaterial> MaterialAsset(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (MaterialAsset.Succeeded())
+    {
+        DebugCylinder->SetMaterial(0, MaterialAsset.Object);
+    }
+
     for (int32 i = 36; i <= 96; ++i)
     {
         FName ComponentName = FName(*FString::Printf(TEXT("Note%d"), i));
@@ -47,45 +68,9 @@ void APianoActor::BeginPlay()
 {
     Super::BeginPlay();
 
-    APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
-    if (PlayerController)
-    {
-        APawn* PlayerPawn = PlayerController->GetPawn();
-        if (PlayerPawn)
-        {
-            TArray<UMotionControllerComponent*> MotionControllers;
-            PlayerPawn->GetComponents<UMotionControllerComponent>(MotionControllers);
-
-            for (UMotionControllerComponent* MC : MotionControllers)
-            {
-                if (MC->GetTrackingSource() == EControllerHand::Left)
-                {
-                    LeftController = MC;
-                }
-                else if (MC->GetTrackingSource() == EControllerHand::Right)
-                {
-                    RightController = MC;
-                }
-            }
-
-            if (!LeftController || !RightController)
-            {
-                UE_LOG(LogTemp, Error, TEXT("APianoActor: Nie znaleziono obu kontrolerów MotionController w Pawn'ie!"));
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("APianoActor: Pobrano kontrolery z Pawn'a."));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("APianoActor: Nie znaleziono Pawn'a gracza!"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("APianoActor: Nie znaleziono PlayerController!"));
-    }
+    // Defer controller setup to give the Pawn time to spawn.
+    FTimerHandle TimerHandle;
+    GetWorldTimerManager().SetTimer(TimerHandle, this, &APianoActor::SetupControllers, 1.0f, false);
 
     EnableInput(GetWorld()->GetFirstPlayerController());
     if (InputComponent)
@@ -93,6 +78,29 @@ void APianoActor::BeginPlay()
         InputComponent->BindAction("StartKalibracji", IE_Pressed, this, &APianoActor::StartCalibration);
         InputComponent->BindAction("UstawLewyPunkt", IE_Pressed, this, &APianoActor::SetLeftCalibrationPoint);
         InputComponent->BindAction("UstawPrawyPunkt", IE_Pressed, this, &APianoActor::SetRightCalibrationPoint);
+    }
+
+    // Set initial materials for keys
+    const TSet<int32> BlackKeyIndexes = {1, 3, 6, 8, 10};
+    for (const TPair<int32, UStaticMeshComponent*>& Pair : KeyMeshComponents)
+    {
+        if (UStaticMeshComponent* KeyComponent = Pair.Value)
+        {
+            if (BlackKeyIndexes.Contains(Pair.Key % 12))
+            {
+                if (BlackKeyMaterial)
+                {
+                    KeyComponent->SetMaterial(0, BlackKeyMaterial);
+                }
+            }
+            else
+            {
+                if (WhiteKeyMaterial)
+                {
+                    KeyComponent->SetMaterial(0, WhiteKeyMaterial);
+                }
+            }
+        }
     }
 
     KeyPivotMap.Empty();
@@ -136,6 +144,41 @@ void APianoActor::BeginPlay()
     UE_LOG(LogTemp, Warning, TEXT("PianoActor: Hierarchia przebudowana w kodzie."));
 }
 
+void APianoActor::SetupControllers()
+{
+    LeftController = nullptr;
+    RightController = nullptr;
+
+    for (TObjectIterator<UMotionControllerComponent> It; It; ++It)
+    {
+        UMotionControllerComponent* MC = *It;
+        if (MC->GetWorld() != GetWorld() || !MC->IsActive())
+        {
+            continue;
+        }
+
+        if (MC->GetTrackingSource() == EControllerHand::Left)
+        {
+            LeftController = MC;
+        }
+        else if (MC->GetTrackingSource() == EControllerHand::Right)
+        {
+            RightController = MC;
+        }
+    }
+
+    if (!LeftController || !RightController)
+    {
+        UE_LOG(LogTemp, Error, TEXT("APianoActor: Could not find both Left and Right controllers using TObjectIterator. Retrying..."));
+        FTimerHandle TimerHandle;
+        GetWorldTimerManager().SetTimer(TimerHandle, this, &APianoActor::SetupControllers, 1.0f, false);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APianoActor: Successfully found and assigned controllers using TObjectIterator."));
+    }
+}
+
 void APianoActor::StartCalibration()
 {
     if (!LeftController || !RightController)
@@ -169,9 +212,24 @@ void APianoActor::SetRightCalibrationPoint()
 
 void APianoActor::ApplyCalibration()
 {
-    FVector NewLocation = FMath::Lerp(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation(), 0.5f);
+    FVector MidPoint = FMath::Lerp(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation(), 0.5f);
     FVector Direction = (RightCalibrationTransform.GetLocation() - LeftCalibrationTransform.GetLocation()).GetSafeNormal();
     FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
+    
+    // Use the auto-calculated offset
+    FVector RotatedOffset = NewRotation.RotateVector(CalculatedOffset);
+    FVector NewLocation = MidPoint - RotatedOffset;
+
+    // --- DEBUG CYLINDER ---
+    // The cylinder is now placed at the target midpoint. The piano's visual center should align with it.
+    if (DebugCylinder)
+    {
+        DebugCylinder->SetWorldLocation(MidPoint);
+        DebugCylinder->SetWorldRotation(NewRotation);
+        DebugCylinder->SetVisibility(true);
+    }
+    // --- END DEBUG ---
+
     float Distance = FVector::Dist(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation());
     float NewScale = Distance / PianoModelWidth;
 
