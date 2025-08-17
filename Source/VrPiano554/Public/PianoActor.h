@@ -9,6 +9,10 @@
 #include "MotionControllerComponent.h"
 #include "PianoActor.generated.h"
 
+class UWidgetComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMenuToggled, bool, bIsMenuVisible);
+
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
 {
@@ -41,9 +45,22 @@ public:
     void HighlightKeys(const TArray<int32>& NotesToHighlight);
     void UnhighlightKeys(const TArray<int32>& NotesToUnhighlight);
 
+    //~ Begin Menu Functions
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void AdjustPositionX(float Value);
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void AdjustPositionY(float Value);
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void AdjustPositionZ(float Value);
+    //~ End Menu Functions
+
 protected:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
+    
+
 
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Piano Setup|Materials")
@@ -54,6 +71,14 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Piano Setup|Materials")
     UMaterialInterface* HighlightedKeyMaterial;
+
+    //~ Begin Menu Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Piano|Menu")
+    UWidgetComponent* MenuWidgetComponent;
+
+    UPROPERTY(BlueprintAssignable, Category = "Piano|Menu")
+    FOnMenuToggled OnMenuToggled;
+    //~ End Menu Properties
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -98,6 +123,7 @@ public:
 private:
     void LoadMidiFile();
     void SetupControllers();
+    void ToggleMenu();
 
     ECalibrationState CalibrationState;
     FTransform LeftCalibrationTransform;
@@ -111,6 +137,5 @@ private:
     // Offset calculated at runtime to center the piano model
     FVector CalculatedOffset;
 
-    UPROPERTY(VisibleAnywhere)
-    UStaticMeshComponent* DebugCylinder;
+
 };

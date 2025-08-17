@@ -1,4 +1,4 @@
-﻿// PianoActor.cpp
+// PianoActor.cpp
 
 #include "PianoActor.h"
 #include "Components/StaticMeshComponent.h"
@@ -10,6 +10,7 @@
 #include "GameFramework/Pawn.h"
 #include "MotionControllerComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/WidgetComponent.h"
 
 APianoActor::APianoActor()
 {
@@ -35,26 +36,6 @@ APianoActor::APianoActor()
     Connectique = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("connectique"));
     Connectique->SetupAttachment(RootComponent);
 
-    // Create and configure the debug cylinder
-    DebugCylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DebugCalibrationCylinder"));
-    DebugCylinder->SetupAttachment(RootComponent);
-    DebugCylinder->SetVisibility(true); // Make it visible by default for debugging
-    DebugCylinder->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    DebugCylinder->SetRelativeLocation(FVector(50.f, 0.f, 0.f)); // Move it in front of the piano model
-
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderAsset(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-    if (CylinderAsset.Succeeded())
-    {
-        DebugCylinder->SetStaticMesh(CylinderAsset.Object);
-        DebugCylinder->SetRelativeScale3D(FVector(0.05f, 0.05f, 10.0f));
-    }
-
-    static ConstructorHelpers::FObjectFinder<UMaterial> MaterialAsset(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-    if (MaterialAsset.Succeeded())
-    {
-        DebugCylinder->SetMaterial(0, MaterialAsset.Object);
-    }
-
     for (int32 i = 36; i <= 96; ++i)
     {
         FName ComponentName = FName(*FString::Printf(TEXT("Note%d"), i));
@@ -62,11 +43,30 @@ APianoActor::APianoActor()
         KeyMesh->SetupAttachment(RootComponent);
         KeyMeshComponents.Add(i, KeyMesh);
     }
+
+    // Create and configure the menu widget component
+    MenuWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("MenuWidget"));
+    MenuWidgetComponent->SetupAttachment(RootComponent);
+    MenuWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+    MenuWidgetComponent->SetDrawSize(FVector2D(500, 300));
+    MenuWidgetComponent->SetVisibility(true);
+    MenuWidgetComponent->SetRelativeLocation(FVector(0, 0, 150.f)); // Position it behind the piano
+
+    static ConstructorHelpers::FClassFinder<UUserWidget> MenuWidgetClass(TEXT("/Game/WBP_PianoMenu"));
+    if (MenuWidgetClass.Succeeded())
+    {
+        MenuWidgetComponent->SetWidgetClass(MenuWidgetClass.Class);
+    }
 }
 
 void APianoActor::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (MenuWidgetComponent)
+    {
+        MenuWidgetComponent->SetVisibility(false);
+    }
 
     // Defer controller setup to give the Pawn time to spawn.
     FTimerHandle TimerHandle;
@@ -78,6 +78,7 @@ void APianoActor::BeginPlay()
         InputComponent->BindAction("StartKalibracji", IE_Pressed, this, &APianoActor::StartCalibration);
         InputComponent->BindAction("UstawLewyPunkt", IE_Pressed, this, &APianoActor::SetLeftCalibrationPoint);
         InputComponent->BindAction("UstawPrawyPunkt", IE_Pressed, this, &APianoActor::SetRightCalibrationPoint);
+        InputComponent->BindAction("ToggleMenu", IE_Pressed, this, &APianoActor::ToggleMenu);
     }
 
     // Set initial materials for keys
@@ -143,6 +144,34 @@ void APianoActor::BeginPlay()
 
     UE_LOG(LogTemp, Warning, TEXT("PianoActor: Hierarchia przebudowana w kodzie."));
 }
+
+
+
+void APianoActor::ToggleMenu()
+{
+    if (MenuWidgetComponent)
+    {
+        const bool bIsNowVisible = !MenuWidgetComponent->IsVisible();
+        MenuWidgetComponent->SetVisibility(bIsNowVisible);
+        OnMenuToggled.Broadcast(bIsNowVisible);
+    }
+}
+
+void APianoActor::AdjustPositionX(float Value)
+{
+    AddActorWorldOffset(FVector(Value, 0.f, 0.f));
+}
+
+void APianoActor::AdjustPositionY(float Value)
+{
+    AddActorWorldOffset(FVector(0.f, Value, 0.f));
+}
+
+void APianoActor::AdjustPositionZ(float Value)
+{
+    AddActorWorldOffset(FVector(0.f, 0.f, Value));
+}
+
 
 void APianoActor::SetupControllers()
 {
@@ -220,15 +249,7 @@ void APianoActor::ApplyCalibration()
     FVector RotatedOffset = NewRotation.RotateVector(CalculatedOffset);
     FVector NewLocation = MidPoint - RotatedOffset;
 
-    // --- DEBUG CYLINDER ---
-    // The cylinder is now placed at the target midpoint. The piano's visual center should align with it.
-    if (DebugCylinder)
-    {
-        DebugCylinder->SetWorldLocation(MidPoint);
-        DebugCylinder->SetWorldRotation(NewRotation);
-        DebugCylinder->SetVisibility(true);
-    }
-    // --- END DEBUG ---
+    
 
     float Distance = FVector::Dist(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation());
     float NewScale = Distance / PianoModelWidth;
