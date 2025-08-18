@@ -81,12 +81,9 @@ void APianoActor::BeginPlay()
     FTimerHandle TimerHandle;
     GetWorldTimerManager().SetTimer(TimerHandle, this, &APianoActor::SetupControllers, 1.0f, false);
 
-    APlayerController* PlayerController = GetWorld()->GetFirstPlayerController(); // Get PlayerController
-    EnableInput(PlayerController); // Pass PlayerController to EnableInput
-
+    EnableInput(GetWorld()->GetFirstPlayerController());
     if (InputComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT("APianoActor: InputComponent is valid. Binding actions.")); // New log
         InputComponent->BindAction("StartKalibracji", IE_Pressed, this, &APianoActor::StartCalibration);
         InputComponent->BindAction("UstawLewyPunkt", IE_Pressed, this, &APianoActor::SetLeftCalibrationPoint);
         InputComponent->BindAction("UstawPrawyPunkt", IE_Pressed, this, &APianoActor::SetRightCalibrationPoint);
@@ -97,10 +94,6 @@ void APianoActor::BeginPlay()
         InputComponent->BindAction("TriggerRight", IE_Released, this, &APianoActor::OnRightTriggerReleased);
         InputComponent->BindAction("TriggerLeft", IE_Pressed, this, &APianoActor::OnLeftTriggerPressed); // Optional, if left trigger is also used
         InputComponent->BindAction("TriggerLeft", IE_Released, this, &APianoActor::OnLeftTriggerReleased); // Optional
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("APianoActor: InputComponent is NULL! Cannot bind actions.")); // New error log
     }
 
     // Set initial materials for keys
@@ -402,6 +395,7 @@ void APianoActor::OnRightTriggerReleased()
     if (WidgetInteractionComponent)
     {
         WidgetInteractionComponent->ReleasePointerKey(EKeys::LeftMouseButton);
+        UE_LOG(LogTemp, Warning, TEXT("APianoActor: Right Trigger Released - Releasing Left Mouse Button."));
     }
 }
 

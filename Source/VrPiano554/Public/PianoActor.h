@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "Components/SceneComponent.h"
 #include "MotionControllerComponent.h"
+#include "Components/WidgetInteractionComponent.h"
 #include "PianoActor.generated.h"
 
 class UWidgetComponent;
@@ -80,6 +81,10 @@ public:
     FOnMenuToggled OnMenuToggled;
     //~ End Menu Properties
 
+    // Widget interaction for UI pointing (attached to RightController)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI Interaction")
+    UWidgetInteractionComponent* WidgetInteractionComponent;
+
 private:
     UPROPERTY(VisibleAnywhere)
     USceneComponent* StableRoot;
@@ -137,5 +142,10 @@ private:
     // Offset calculated at runtime to center the piano model
     FVector CalculatedOffset;
 
+private:
+    void OnRightTriggerPressed();
+    void OnRightTriggerReleased();
+    void OnLeftTriggerPressed();
+    void OnLeftTriggerReleased();
 
 };
