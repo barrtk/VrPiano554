@@ -11,6 +11,7 @@
 #include "MotionControllerComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/WidgetComponent.h"
+#include "PianoMenuWidget.h" // Required for UPianoMenuWidget
 
 APianoActor::APianoActor()
 {
@@ -393,7 +394,6 @@ void APianoActor::OnRightTriggerPressed()
     if (WidgetInteractionComponent)
     {
         WidgetInteractionComponent->PressPointerKey(EKeys::LeftMouseButton);
-        UE_LOG(LogTemp, Warning, TEXT("APianoActor: Right Trigger Pressed - Simulating Left Mouse Button."));
     }
 }
 
@@ -424,3 +424,34 @@ void APianoActor::OnLeftTriggerReleased()
     //     UE_LOG(LogTemp, Warning, TEXT("APianoActor: Left Trigger Released - Releasing Left Mouse Button."));
     // }
 }
+
+void APianoActor::SavePosition()
+{
+    if (UPianoSaveGame* SaveGameInstance = Cast<UPianoSaveGame>(UGameplayStatics::CreateSaveGameObject(UPianoSaveGame::StaticClass())))
+    {
+        SaveGameInstance->PianoTransform = GetActorTransform();
+        UGameplayStatics::SaveGameToSlot(SaveGameInstance, SaveGameInstance->SaveSlotName, SaveGameInstance->UserIndex);
+        if (PianoMenuWidgetInstance)
+        {
+            PianoMenuWidgetInstance->UpdatePositionText(GetActorLocation());
+        }
+    }
+}
+
+void APianoActor::LoadPosition()
+{
+    if (UPianoSaveGame* LoadedGame = Cast<UPianoSaveGame>(UGameplayStatics::LoadGameFromSlot(TEXT("PianoPositionSaveSlot"), 0)))
+    {
+        SetActorTransform(LoadedGame->PianoTransform);
+        if (PianoMenuWidgetInstance)
+        {
+            PianoMenuWidgetInstance->UpdatePositionText(GetActorLocation());
+        }
+    }
+}
+
+void APianoActor::ResetPosition()
+{
+    SetActorTransform(FTransform::Identity);
+}
+

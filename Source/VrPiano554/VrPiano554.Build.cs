@@ -7,7 +7,7 @@ public class VrPiano554 : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "HeadMountedDisplay", "XRBase", "Sockets", "Networking", "Json", "JsonUtilities", "UMG" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "HeadMountedDisplay", "XRBase", "Sockets", "Networking", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore" });
 
         PrivateDependencyModuleNames.AddRange(new string[] {  });
 

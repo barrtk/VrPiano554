@@ -160,7 +160,7 @@ void APianoManager::LoadPianoTransform()
                 FActorSpawnParameters SpawnParams;
                 SpawnParams.Owner = this;
 				SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-                SpawnedPiano = GetWorld()->SpawnActor<APianoActor>(PianoActorClass, LoadGameInstance->PianoTransform, SpawnParams);
+                SpawnedPiano = GetWorld()->SpawnActor<APianoActor>(PianoActorClass, LoadGameInstance->PianoTransform.GetLocation(), LoadGameInstance->PianoTransform.GetRotation().Rotator(), SpawnParams);
 
 				if (SpawnedPiano)
 				{

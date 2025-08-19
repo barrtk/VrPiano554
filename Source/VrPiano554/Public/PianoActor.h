@@ -8,6 +8,7 @@
 #include "Components/SceneComponent.h"
 #include "MotionControllerComponent.h"
 #include "Components/WidgetInteractionComponent.h"
+#include "PianoSaveGame.h"
 #include "PianoActor.generated.h"
 
 class UWidgetComponent;
@@ -55,6 +56,15 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
     void AdjustPositionZ(float Value);
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|SaveLoad")
+    void SavePosition();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|SaveLoad")
+    void LoadPosition();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|SaveLoad")
+    void ResetPosition();
     //~ End Menu Functions
 
 protected:
@@ -84,6 +94,12 @@ public:
     // Widget interaction for UI pointing (attached to RightController)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI Interaction")
     UWidgetInteractionComponent* WidgetInteractionComponent;
+
+    UPROPERTY()
+    UPianoSaveGame* LoadGameInstance;
+
+    UPROPERTY()
+    class UPianoMenuWidget* PianoMenuWidgetInstance;
 
 private:
     UPROPERTY(VisibleAnywhere)

@@ -10,6 +10,7 @@ import pretty_midi
 
 # Path to your MIDI file
 MIDI_FILE_PATH = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Source\VrPiano554\midi\Promise.mid"
+POSITION_FILE_PATH = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\piano_position.json"
 
 # --- CRITICAL FIX FOR portmidi.dll DEPENDENCIES ---
 try:
@@ -54,9 +55,14 @@ except Exception as e:
     print(f"ERROR: Could not load sounds: {e}")
 
 # --- Network Setup ---
-UDP_IP = "127.0.0.1"
-UDP_PORT = 5005
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+UDP_IP_SEND = "127.0.0.1"
+UDP_PORT_SEND = 5005
+send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+UDP_IP_RECEIVE = "127.0.0.1"
+UDP_PORT_RECEIVE = 5006
+receive_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+receive_sock.bind((UDP_IP_RECEIVE, UDP_PORT_RECEIVE))
 
 # --- Sound & State Management ---
 muted_all = False
@@ -72,6 +78,7 @@ file_thread = None
 note_off_timers = []
 was_playing = False
 live_hold_mode = False
+loop_midi = False
 
 # --- NEW: Wait-for-key-press (Practice Mode) ---
 wait_for_key_mode = False
@@ -86,7 +93,7 @@ def send_udp_message(message_dict):
     try:
         json_message = json.dumps(message_dict)
         message_bytes = json_message.encode('utf-8') + b'\0'
-        sock.sendto(message_bytes, (UDP_IP, UDP_PORT))
+        send_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_SEND))
     except Exception as e:
         print(f"ERROR sending UDP message: {e}")
 
@@ -143,85 +150,73 @@ def midi_to_note_name(midi_note):
 
 # ---------- MIDI FILE PLAYBACK ----------
 def play_midi_file_prettymidi(file_path):
-    global was_playing, is_paused, muted_all, muted_parser, note_off_timers, stop_event, speed_factor, wait_for_key_mode, notes_to_wait_for, key_pressed_event
+    global was_playing, is_paused, muted_all, muted_parser, note_off_timers, stop_event, speed_factor, wait_for_key_mode, notes_to_wait_for, key_pressed_event, loop_midi
 
-    try:
-        pm = pretty_midi.PrettyMIDI(file_path)
-    except Exception as e:
-        print(f"ERROR: pretty_midi failed to load file: {e}")
-        return
+    while not stop_event.is_set():
+        try:
+            pm = pretty_midi.PrettyMIDI(file_path)
+        except Exception as e:
+            print(f"ERROR: pretty_midi failed to load file: {e}")
+            return
 
-    # --- NEW SEQUENTIAL LOGIC ---
-    all_notes = []
-    for instrument in pm.instruments:
-        all_notes.extend(instrument.notes)
-    
-    # Sort all notes by start time
-    sorted_notes = sorted(all_notes, key=lambda note: note.start)
-    # --- END NEW SEQUENTIAL LOGIC ---
-
-    start_t0 = time.time()
-    last_start_time = 0.0
-    print(f"[FilePlayback] Starting playback of {file_path} with {len(sorted_notes)} notes.")
-    was_playing = True
-
-    for note in sorted_notes:
-        while is_paused and not stop_event.is_set():
-            time.sleep(0.1)
-            # Adjust start_t0 to account for the pause duration
-            start_t0 = time.time() - (last_start_time / speed_factor)
-
-        if stop_event.is_set() or muted_all:
-            break
-
-        # --- Handle timing for both normal and practice mode ---
-        wait_duration = note.start - last_start_time
-        if wait_duration > 0 and not wait_for_key_mode: # Only sleep in normal playback
-            target_time = start_t0 + (note.start / speed_factor)
-            to_sleep = target_time - time.time()
-            if to_sleep > 0:
-                time.sleep(to_sleep)
+        all_notes = []
+        for instrument in pm.instruments:
+            all_notes.extend(instrument.notes)
         
-        last_start_time = note.start
+        sorted_notes = sorted(all_notes, key=lambda note: note.start)
 
-        # --- PRACTICE MODE: Wait for single key press ---
-        if wait_for_key_mode:
-            with state_lock:
-                notes_to_wait_for.clear()
-                notes_to_wait_for.add(note.pitch)
+        start_t0 = time.time()
+        last_start_time = 0.0
+        print(f"[FilePlayback] Starting playback of {file_path} with {len(sorted_notes)} notes.")
+        was_playing = True
+
+        for note in sorted_notes:
+            while is_paused and not stop_event.is_set():
+                time.sleep(0.1)
+                start_t0 = time.time() - (last_start_time / speed_factor)
+
+            if stop_event.is_set() or muted_all:
+                break
+
+            wait_duration = note.start - last_start_time
+            if wait_duration > 0 and not wait_for_key_mode:
+                target_time = start_t0 + (note.start / speed_factor)
+                to_sleep = target_time - time.time()
+                if to_sleep > 0:
+                    time.sleep(to_sleep)
             
-            send_udp_message({"type": "highlight_on", "notes": [note.pitch]})
-            key_pressed_event.clear()
-            notes_str = f"{midi_to_note_name(note.pitch)} ({note.pitch})"
-            print(f"\033[93m[PRACTICE] Waiting for key: {notes_str}\033[0m")
-            
-            key_pressed_event.wait() # Wait for the single correct key
-            if stop_event.is_set(): break
-            # highlight_off is sent by the live_midi_thread
+            last_start_time = note.start
 
-        # --- Play sound and send MIDI messages (for both modes) ---
-        duration = max(0.0, note.end - note.start)
-        send_velocity = 1 if muted_parser else note.velocity
-        send_midi_message("note_on", note.pitch, velocity=send_velocity, duration=duration, source="file")
-        play_sound(note.pitch, source="file")
+            if wait_for_key_mode:
+                with state_lock:
+                    notes_to_wait_for.clear()
+                    notes_to_wait_for.add(note.pitch)
+                
+                send_udp_message({"type": "highlight_on", "notes": [note.pitch]})
+                key_pressed_event.clear()
+                notes_str = f"{midi_to_note_name(note.pitch)} ({note.pitch})"
+                print(f"\033[93m[PRACTICE] Waiting for key: {notes_str}\033[0m")
+                
+                key_pressed_event.wait()
+                if stop_event.is_set(): break
 
-        adj_duration = duration / speed_factor
-        if adj_duration > 0:
-            # The note_off timer should still work as before
-            timer = threading.Timer(adj_duration, lambda n=note.pitch: send_midi_message("note_off", n, source="file"))
-            note_off_timers.append(timer)
-            timer.start()
-        else:
-            # If duration is 0, send note_off immediately
-            send_midi_message("note_off", note.pitch, source="file")
-            stop_sound(note.pitch, source="file")
+            duration = max(0.0, note.end - note.start)
+            send_velocity = 1 if muted_parser else note.velocity
+            send_midi_message("note_on", note.pitch, velocity=send_velocity, duration=duration, source="file")
+            play_sound(note.pitch, source="file")
+            send_udp_message({"command": "update_midi_info", "midi_info": f"File: {midi_to_note_name(note.pitch)}"})
 
-    # --- Cleanup ---
-    # Wait for the last note to finish playing
-    if not wait_for_key_mode and len(sorted_notes) > 0:
-        last_note = sorted_notes[-1]
-        final_wait = (last_note.end - last_note.start) / speed_factor
-        time.sleep(final_wait + 0.5)
+            adj_duration = duration / speed_factor
+            if adj_duration > 0:
+                timer = threading.Timer(adj_duration, lambda n=note.pitch: send_midi_message("note_off", n, source="file"))
+                note_off_timers.append(timer)
+                timer.start()
+            else:
+                send_midi_message("note_off", note.pitch, source="file")
+                stop_sound(note.pitch, source="file")
+
+        if not loop_midi or stop_event.is_set():
+            break
 
     for timer in note_off_timers:
         timer.cancel()
@@ -326,23 +321,118 @@ def start_live_midi():
     live_thread = threading.Thread(target=live_midi_thread, daemon=True)
     live_thread.start()
 
+# ---------- Position Management ----------
+def save_position(position):
+    try:
+        with open(POSITION_FILE_PATH, 'w') as f:
+            json.dump(position, f)
+        print(f"Position saved to {POSITION_FILE_PATH}")
+    except Exception as e:
+        print(f"ERROR saving position: {e}")
+
+def load_position():
+    try:
+        if os.path.exists(POSITION_FILE_PATH):
+            with open(POSITION_FILE_PATH, 'r') as f:
+                position = json.load(f)
+                print(f"Position loaded from {POSITION_FILE_PATH}")
+                return position
+    except Exception as e:
+        print(f"ERROR loading position: {e}")
+    return None
+
+# ---------- UDP Command Receiver ----------
+def udp_receiver_thread():
+    global muted_all, muted_live, muted_parser, is_paused, live_hold_mode, speed_factor, wait_for_key_mode, loop_midi
+    print(f"Listening for commands on UDP {UDP_IP_RECEIVE}:{UDP_PORT_RECEIVE}")
+    while not stop_event.is_set():
+        try:
+            data, addr = receive_sock.recvfrom(1024)
+            message = json.loads(data.decode('utf-8'))
+            command = message.get("command")
+            
+            print(f"Received command: {command}")
+
+            if command == "kalibracja_x_mniej":
+                send_udp_message({"command": "adjust_x", "value": -1.0})
+            elif command == "kalibracja_x_wiecej":
+                send_udp_message({"command": "adjust_x", "value": 1.0})
+            elif command == "kalibracja_y_mniej":
+                send_udp_message({"command": "adjust_y", "value": -1.0})
+            elif command == "kalibracja_y_wiecej":
+                send_udp_message({"command": "adjust_y", "value": 1.0})
+            elif command == "kalibracja_z_mniej":
+                send_udp_message({"command": "adjust_z", "value": -1.0})
+            elif command == "kalibracja_z_wiecej":
+                send_udp_message({"command": "adjust_z", "value": 1.0})
+            elif command == "reset_pozycji":
+                send_udp_message({"command": "reset_position"})
+            elif command == "wczytaj_pozycje":
+                position = load_position()
+                if position:
+                    send_udp_message({"command": "set_position", "position": position})
+            elif command == "zapisz_pozycje":
+                # This command should be sent from Unreal with the current position
+                position = message.get("position")
+                if position:
+                    save_position(position)
+            elif command == "start_restart":
+                restart_file_playback()
+            elif command == "pauza":
+                with state_lock: is_paused = not is_paused
+                print(f"Pauza {'wlaczona' if is_paused else 'wylaczona'}.")
+            elif command == "tryb_nauki":
+                with state_lock:
+                    wait_for_key_mode = not wait_for_key_mode
+                    key_pressed_event.set()
+                print(f"Tryb nauki {'WLACZONY' if wait_for_key_mode else 'WYLACZONY'}")
+            elif command == "life_hold":
+                with state_lock: live_hold_mode = not live_hold_mode
+                print(f"LIVE hold {'wlaczone' if live_hold_mode else 'wylaczone'}.")
+            elif command == "midi_wolniej":
+                with state_lock: speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
+                print(f"Predkosc odtwarzania: {int(speed_factor * 100)}%")
+            elif command == "midi_szybciej":
+                with state_lock: speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
+                print(f"Predkosc odtwarzania: {int(speed_factor * 100)}%")
+            elif command == "mute_file":
+                with state_lock: muted_parser = not muted_parser
+                print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
+            elif command == "mute_live":
+                with state_lock: muted_live = not muted_live
+                print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
+            elif command == "unmute_all":
+                with state_lock: muted_all = False; muted_live = False; muted_parser = False
+                print("Wszystkie tryby wyciszenia wylaczone.")
+            elif command == "toggle_loop":
+                with state_lock: loop_midi = not loop_midi
+                send_udp_message({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
+                print(f"Looping MIDI {'wlaczone' if loop_midi else 'wylaczone'}.")
+
+        except Exception as e:
+            print(f"Error processing command: {e}")
+
+
 # ---------- Control / Command Loop ----------
 def main_loop():
     global muted_all, muted_live, muted_parser, is_paused, volume, stop_event, was_playing, live_hold_mode, speed_factor, wait_for_key_mode
 
-    print("Komendy:\n"
-          " s - start/restart file MIDI playback\n"
-          " w - toggle practice mode (wait for key press)\n"
-          " p - toggle pause\n"
-          " f - toggle mute file playback\n"
-          " v - toggle mute live MIDI\n"
-          " m - toggle mute all\n"
-          " u - unmute all\n"
-          " h - toggle LIVE hold\n"
-          " . - przyspiesz o 5%\n"
-          " , - zwolnij o 5%\n"
+    print("Komendy:\n" 
+          " s - start/restart file MIDI playback\n" 
+          " w - toggle practice mode (wait for key press)\n" 
+          " p - toggle pause\n" 
+          " f - toggle mute file playback\n" 
+          " v - toggle mute live MIDI\n" 
+          " m - toggle mute all\n" 
+          " u - unmute all\n" 
+          " h - toggle LIVE hold\n" 
+          " . - przyspiesz o 5%\n" 
+          " , - zwolnij o 5%\n" 
           " q - quit\n")
     start_live_midi()
+    
+    receiver = threading.Thread(target=udp_receiver_thread, daemon=True)
+    receiver.start()
 
     while True:
         try:
@@ -382,10 +472,10 @@ def main_loop():
             print(f"LIVE hold {'wlaczone' if live_hold_mode else 'wylaczone'}.")
         elif cmd == ".":
             with state_lock: speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
-            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}\%\033[0m")
+            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}%\033[0m")
         elif cmd == ",":
             with state_lock: speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
-            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}\%\033[0m")
+            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}%\033[0m")
         else:
             print(f"Nieznana komenda: {cmd}")
 
