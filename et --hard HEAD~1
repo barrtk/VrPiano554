@@ -1,0 +1,29 @@
+[33mcommit 5d1fb9a098da43e27bf8f5cbbdf56e8786fdbfc8[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: BartekH <bartlomiejhawrylo@gmail.com>
+Date:   Tue Aug 19 04:28:34 2025 +0200
+
+    przed zajeciem sie spadajacymi blokami dokoncz podswietlanie przyciskow ktore maja toggle on oraz poprawne wyswieltanie w textboxie obecnego midi oraz textu przy zapisie lokalizacji klawiszy. upewnij sie ze main.py obsluguje nastepne i poprzednie midi
+
+[33mcommit f0e93c8a41f8497e1536807ab0ecb7527ae0e116[m[33m ([m[1;31morigin/master[m[33m)[m
+Author: BartekH <bartlomiejhawrylo@gmail.com>
+Date:   Mon Aug 18 11:06:09 2025 +0200
+
+    Klikanie guzików w końcu daje log
+
+[33mcommit 0bc1ba986c74a11c0c4a0aaca10c06c5f4392f6a[m
+Author: BartekH <bartlomiejhawrylo@gmail.com>
+Date:   Sun Aug 17 11:09:45 2025 +0200
+
+    poprawiłem kalibracje i pracuje nad widgetem
+
+[33mcommit 4c8aeed5ddd6a3fee9fb43aa31d3b361fc3330fd[m
+Author: BartekH <bartlomiejhawrylo@gmail.com>
+Date:   Sat Aug 16 13:40:50 2025 +0200
+
+    kalibracja jest do skalibrowania:)
+
+[33mcommit 06474119d6585b4001c8402658a7cadb38808cbb[m
+Author: BartekH <bartlomiejhawrylo@gmail.com>
+Date:   Sat Aug 16 12:02:07 2025 +0200
+
+    Pierwszy commit, wyświetla klawisze, działają animacje, dźwięki, tryb nauki z podświetleniem

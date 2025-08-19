@@ -265,6 +265,13 @@ void APianoActor::SetRightCalibrationPoint()
         RightCalibrationTransform = RightController->GetComponentTransform();
         UKismetSystemLibrary::PrintString(this, TEXT("Prawy punkt zapisany. Stosowanie kalibracji..."), true, true, FLinearColor::Green, 10.f);
         ApplyCalibration();
+
+        // Pętla do automatycznego obniżenia pianina
+        for (int i = 0; i < 10; ++i)
+        {
+            AdjustPositionZ(-1.0f);
+        }
+        UKismetSystemLibrary::PrintString(this, TEXT("Pianino zostało automatycznie obniżone."), true, true, FLinearColor::Yellow, 10.f);
     }
 }
 
