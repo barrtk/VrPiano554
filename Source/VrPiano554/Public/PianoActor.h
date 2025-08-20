@@ -27,6 +27,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileMuteStateChanged, bool, bNewS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeHoldStateChanged, bool, bNewState);
 
+// Delegate for MIDI tempo changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMidiTempoChanged, float, NewTempo);
+
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
 {
@@ -48,6 +51,12 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "MIDI")
     void HandleMidiNote(int32 Note, bool bIsNoteOn);
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void PrevMidi();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void NextMidi();
 
     void SetLeftCalibrationPoint();
     void SetRightCalibrationPoint();
@@ -113,8 +122,6 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Added for socket cleanup
     virtual void Tick(float DeltaTime) override;
-    
-
 
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Piano Setup|Materials")
@@ -162,6 +169,12 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Menu")
     FOnLifeHoldStateChanged OnLifeHoldStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    float CurrentMidiTempo; // Added for MIDI Tempo
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnMidiTempoChanged OnMidiTempoChanged; // Added for MIDI Tempo
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)
@@ -240,5 +253,4 @@ private:
     // UDP Socket for sending commands
     FSocket* SenderSocket; // Added
     void SendUDPCommand(const FString& Command); // Added
-
 };

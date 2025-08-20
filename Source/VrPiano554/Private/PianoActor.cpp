@@ -1,5 +1,3 @@
-// PianoActor.cpp
-
 #include "PianoActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -16,6 +14,7 @@
 #include "SocketSubsystem.h" // Added for ISocketSubsystem
 #include "Interfaces/IPv4/IPv4Address.h" // Added for FIPv4Address
 #include "Common/UdpSocketBuilder.h" // Added for FUdpSocketBuilder
+#include "PianoSaveGame.h" // Added for UPianoSaveGame
 
 APianoActor::APianoActor()
 {
@@ -77,6 +76,7 @@ APianoActor::APianoActor()
     bIsFileMuted = false;
     bIsLiveMuted = false;
     bIsLifeHoldActive = false;
+    CurrentMidiTempo = 100.0f; // Initialize tempo
 
     SenderSocket = nullptr; // Initialize socket pointer
 }
@@ -88,6 +88,7 @@ void APianoActor::BeginPlay()
     if (MenuWidgetComponent)
     {
         MenuWidgetComponent->SetVisibility(false);
+        PianoMenuWidgetInstance = Cast<UPianoMenuWidget>(MenuWidgetComponent->GetUserWidgetObject());
     }
 
     // Defer controller setup to give the Pawn time to spawn.
@@ -99,7 +100,7 @@ void APianoActor::BeginPlay()
 
     if (InputComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT("APianoActor: InputComponent is valid. Binding actions.")); // New log
+        UE_LOG(LogTemp, Warning, TEXT("APianoActor: InputComponent is valid. Binding actions."));
         InputComponent->BindAction("StartKalibracji", IE_Pressed, this, &APianoActor::StartCalibration);
         InputComponent->BindAction("UstawLewyPunkt", IE_Pressed, this, &APianoActor::SetLeftCalibrationPoint);
         InputComponent->BindAction("UstawPrawyPunkt", IE_Pressed, this, &APianoActor::SetRightCalibrationPoint);
@@ -108,16 +109,16 @@ void APianoActor::BeginPlay()
         // Bind Trigger actions for widget interaction
         InputComponent->BindAction("TriggerRight", IE_Pressed, this, &APianoActor::OnRightTriggerPressed);
         InputComponent->BindAction("TriggerRight", IE_Released, this, &APianoActor::OnRightTriggerReleased);
-        InputComponent->BindAction("TriggerLeft", IE_Pressed, this, &APianoActor::OnLeftTriggerPressed); // Optional, if left trigger is also used
-        InputComponent->BindAction("TriggerLeft", IE_Released, this, &APianoActor::OnLeftTriggerReleased); // Optional
+        InputComponent->BindAction("TriggerLeft", IE_Pressed, this, &APianoActor::OnLeftTriggerPressed);
+        InputComponent->BindAction("TriggerLeft", IE_Released, this, &APianoActor::OnLeftTriggerReleased);
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("APianoActor: InputComponent is NULL! Cannot bind actions.")); // New error log
+        UE_LOG(LogTemp, Error, TEXT("APianoActor: InputComponent is NULL! Cannot bind actions."));
     }
 
     // Set initial materials for keys
-    const TSet<int32> BlackKeyIndexes = {1, 3, 6, 8, 10};
+    const TSet<int32> BlackKeyIndexes = { 1, 3, 6, 8, 10 };
     for (const TPair<int32, UStaticMeshComponent*>& Pair : KeyMeshComponents)
     {
         if (UStaticMeshComponent* KeyComponent = Pair.Value)
@@ -159,9 +160,9 @@ void APianoActor::BeginPlay()
             FVector WorldUpDirection = KeyComponent->GetComponentTransform().TransformVectorNoScale(LocalUpDirection);
 
             // Calculate pivot position: from center, move to back and to TOP
-            FVector PivotWorldPosition = Bounds.Origin 
-                                       + (WorldBackDirection * Bounds.BoxExtent.X) 
-                                       + (WorldUpDirection * Bounds.BoxExtent.Z);
+            FVector PivotWorldPosition = Bounds.Origin
+                + (WorldBackDirection * Bounds.BoxExtent.X)
+                + (WorldUpDirection * Bounds.BoxExtent.Z);
 
             FName PivotName = FName(*FString::Printf(TEXT("Pivot_%d"), MidiNote));
             USceneComponent* NewPivot = NewObject<USceneComponent>(this, PivotName);
@@ -226,7 +227,6 @@ void APianoActor::AdjustPositionZ(float Value)
 {
     AddActorWorldOffset(FVector(0.f, 0.f, Value));
 }
-
 
 void APianoActor::SetupControllers()
 {
@@ -312,12 +312,10 @@ void APianoActor::ApplyCalibration()
     FVector MidPoint = FMath::Lerp(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation(), 0.5f);
     FVector Direction = (RightCalibrationTransform.GetLocation() - LeftCalibrationTransform.GetLocation()).GetSafeNormal();
     FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
-    
+
     // Use the auto-calculated offset
     FVector RotatedOffset = NewRotation.RotateVector(CalculatedOffset);
     FVector NewLocation = MidPoint - RotatedOffset;
-
-    
 
     float Distance = FVector::Dist(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation());
     float NewScale = Distance / PianoModelWidth;
@@ -553,12 +551,26 @@ void APianoActor::ToggleLifeHold()
 
 void APianoActor::MidiSlower()
 {
-    SendUDPCommand(TEXT("midi_wolniej"));
+    CurrentMidiTempo = FMath::Max(CurrentMidiTempo - 10.0f, 10.0f);
+    OnMidiTempoChanged.Broadcast(CurrentMidiTempo);
+    SendUDPCommand(FString::Printf(TEXT("set_tempo %f"), CurrentMidiTempo));
 }
 
 void APianoActor::MidiFaster()
 {
-    SendUDPCommand(TEXT("midi_szybciej"));
+    CurrentMidiTempo = FMath::Min(CurrentMidiTempo + 10.0f, 200.0f);
+    OnMidiTempoChanged.Broadcast(CurrentMidiTempo);
+    SendUDPCommand(FString::Printf(TEXT("set_tempo %f"), CurrentMidiTempo));
+}
+
+void APianoActor::PrevMidi()
+{
+    SendUDPCommand(TEXT("prev_midi"));
+}
+
+void APianoActor::NextMidi()
+{
+    SendUDPCommand(TEXT("next_midi"));
 }
 
 void APianoActor::UnmuteAll()
@@ -579,4 +591,9 @@ void APianoActor::StartRestart()
     {
         PianoMenuWidgetInstance->UpdateMidiText(TEXT("MIDI: Restarting..."));
     }
+}
+
+void APianoActor::LoadMidiFile()
+{
+    // Implement MIDI file loading logic if needed
 }

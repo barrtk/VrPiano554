@@ -16,121 +16,133 @@ class UTextBlock; // Forward declaration for UTextBlock
 class FSocket; // Forward declaration for FSocket
 
 /**
- * 
+ *
  */
 UCLASS()
 class VRPiano554_API UPianoMenuWidget : public UUserWidget
 {
-	GENERATED_BODY()
-	
-public:
-	// Properties for buttons used in NativeConstruct
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_1;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_2;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_3;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_4;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_5;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_6;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_8;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_9;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_10;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_12;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_13;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_14;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_15;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_16;
+    GENERATED_BODY()
 
-	// Properties for text blocks used in NativeConstruct
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UTextBlock* aktualneMidi;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UTextBlock* TextBlock_25;
+public:
+    // Properties for buttons used in NativeConstruct
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_1;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_2;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_3;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_4;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_5;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_6;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_8;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_9;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_10;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_12;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_13;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_14;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_15;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_16;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_20; // Prev Midi
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UButton* Button_21; // Next Midi
+
+    // Properties for text blocks used in NativeConstruct
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UTextBlock* aktualneMidi;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UTextBlock* TextBlock_25;
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
+    class UTextBlock* MidiTempo; // New MidiTempo TextBlock
 
 protected:
-	virtual void NativeConstruct() override;
-	virtual void BeginDestroy() override; // Added BeginDestroy declaration
+    virtual void NativeConstruct() override;
+    virtual void BeginDestroy() override; // Added BeginDestroy declaration
 
-	UFUNCTION()
-	void OnStartButtonClicked();
+    UFUNCTION()
+    void OnStartButtonClicked();
 
-	// PianoActor property
-	UPROPERTY()
-	class APianoActor* PianoActor;
+    // PianoActor property
+    UPROPERTY()
+    class APianoActor* PianoActor;
 
-	// UFUNCTIONS for button clicks (as seen in .cpp)
-	UFUNCTION()
-	void OnButton_KalibracjaXMniejClicked();
-	UFUNCTION()
-	void OnButton_KalibracjaXWiecejClicked();
-	UFUNCTION()
-	void OnButton_KalibracjaYMniejClicked();
-	UFUNCTION()
-	void OnButton_KalibracjaYWiecejClicked();
-	UFUNCTION()
-	void OnButton_KalibracjaZMniejClicked();
-	UFUNCTION()
-	void OnButton_KalibracjaZWiecejClicked();
-	UFUNCTION()
-	void OnButton_ResetClicked();
-	UFUNCTION()
-	void OnButton_StartRestartClicked();
-	UFUNCTION()
-	void OnButton_PauzaClicked();
-	UFUNCTION()
-	void OnButton_TrybNaukiClicked();
-	UFUNCTION()
-	void OnButton_MidiWolniejClicked();
-	UFUNCTION()
-	void OnButton_MidiSzybciejClicked();
-	UFUNCTION()
-	void OnButton_MuteFileClicked();
-	UFUNCTION()
-	void OnButton_MuteLiveClicked();
-	UFUNCTION()
-	void OnButton_ToggleLoopClicked();
+    // UFUNCTIONS for button clicks (as seen in .cpp)
+    UFUNCTION()
+    void OnButton_KalibracjaXMniejClicked();
+    UFUNCTION()
+    void OnButton_KalibracjaXWiecejClicked();
+    UFUNCTION()
+    void OnButton_KalibracjaYMniejClicked();
+    UFUNCTION()
+    void OnButton_KalibracjaYWiecejClicked();
+    UFUNCTION()
+    void OnButton_KalibracjaZMniejClicked();
+    UFUNCTION()
+    void OnButton_KalibracjaZWiecejClicked();
+    UFUNCTION()
+    void OnButton_ResetClicked();
+    UFUNCTION()
+    void OnButton_StartRestartClicked();
+    UFUNCTION()
+    void OnButton_PauzaClicked();
+    UFUNCTION()
+    void OnButton_TrybNaukiClicked();
+    UFUNCTION()
+    void OnButton_MidiWolniejClicked();
+    UFUNCTION()
+    void OnButton_MidiSzybciejClicked();
+    UFUNCTION()
+    void OnButton_MuteFileClicked();
+    UFUNCTION()
+    void OnButton_MuteLiveClicked();
+    UFUNCTION()
+    void OnButton_ToggleLoopClicked();
+    UFUNCTION()
+    void OnButton_PrevMidiClicked(); // New Prev Midi button handler
+    UFUNCTION()
+    void OnButton_NextMidiClicked(); // New Next Midi button handler
 
-	// Handlers for PianoActor state changes
-	UFUNCTION()
-	void HandlePauseStateChanged(bool bNewPauseState);
-	UFUNCTION()
-	void HandleLearningModeStateChanged(bool bNewLearningModeState);
-	UFUNCTION()
-	void HandleFileMuteStateChanged(bool bNewFileMuteState);
-	UFUNCTION()
-	void HandleLiveMuteStateChanged(bool bNewLiveMuteState);
+    // Handlers for PianoActor state changes
+    UFUNCTION()
+    void HandlePauseStateChanged(bool bNewPauseState);
+    UFUNCTION()
+    void HandleLearningModeStateChanged(bool bNewLearningModeState);
+    UFUNCTION()
+    void HandleFileMuteStateChanged(bool bNewFileMuteState);
+    UFUNCTION()
+    void HandleLiveMuteStateChanged(bool bNewLiveMuteState);
+    UFUNCTION()
+    void HandleMidiTempoChanged(float NewTempo); // New MidiTempo handler
 
 private:
-	bool bIsPauzaActive;
+    bool bIsPauzaActive;
 
 public: // Moved to public section for external access
-	UFUNCTION(BlueprintCallable, Category = "UDP")
-	void ReceiveUDPData(const FString& Data);
+    UFUNCTION(BlueprintCallable, Category = "UDP")
+    void ReceiveUDPData(const FString& Data);
 
-	void UpdatePositionText(const FVector& Position);
-	void UpdateMidiText(const FString& MidiMessage);
-	// Corrected signature for UpdateButtonState
-	void UpdateButtonState(const FString& ButtonName, bool bIsActive);
+    void UpdatePositionText(const FVector& Position);
+    void UpdateMidiText(const FString& MidiMessage);
+    // Corrected signature for UpdateButtonState
+    void UpdateButtonState(const FString& ButtonName, bool bIsActive);
 
 private:
-	// Socket declaration (removed from here, now in PianoActor)
-	// FSocket* Socket;
+    // Socket declaration (removed from here, now in PianoActor)
+    // FSocket* Socket;
 
-	// SendUDPCommand declaration (removed from here, now in PianoActor)
-	// void SendUDPCommand(const FString& Command);
+    // SendUDPCommand declaration (removed from here, now in PianoActor)
+    // void SendUDPCommand(const FString& Command);
 };
