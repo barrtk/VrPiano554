@@ -76,7 +76,6 @@ APianoActor::APianoActor()
     bIsFileMuted = false;
     bIsLiveMuted = false;
     bIsLifeHoldActive = false;
-    CurrentMidiTempo = 100.0f; // Initialize tempo
 
     SenderSocket = nullptr; // Initialize socket pointer
 }
@@ -551,16 +550,12 @@ void APianoActor::ToggleLifeHold()
 
 void APianoActor::MidiSlower()
 {
-    CurrentMidiTempo = FMath::Max(CurrentMidiTempo - 10.0f, 10.0f);
-    OnMidiTempoChanged.Broadcast(CurrentMidiTempo);
-    SendUDPCommand(FString::Printf(TEXT("set_tempo %f"), CurrentMidiTempo));
+    SendUDPCommand(TEXT("midi_wolniej"));
 }
 
 void APianoActor::MidiFaster()
 {
-    CurrentMidiTempo = FMath::Min(CurrentMidiTempo + 10.0f, 200.0f);
-    OnMidiTempoChanged.Broadcast(CurrentMidiTempo);
-    SendUDPCommand(FString::Printf(TEXT("set_tempo %f"), CurrentMidiTempo));
+    SendUDPCommand(TEXT("midi_szybciej"));
 }
 
 void APianoActor::PrevMidi()
@@ -585,6 +580,14 @@ void APianoActor::ToggleLoop()
 
 void APianoActor::StartRestart()
 {
+    // If the file is muted, unmute it to match the default state
+    // of the Python script after a restart.
+    if (bIsFileMuted)
+    {
+        bIsFileMuted = false;
+        OnFileMuteStateChanged.Broadcast(bIsFileMuted); // This will update the UI
+    }
+
     SendUDPCommand(TEXT("start_restart"));
     UKismetSystemLibrary::PrintString(this, TEXT("Restarting MIDI and Application..."), true, true, FLinearColor::Blue, 10.f);
     if (PianoMenuWidgetInstance)

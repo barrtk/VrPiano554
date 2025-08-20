@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import sys
 import pygame
@@ -8,9 +10,54 @@ import time
 import threading
 import pretty_midi
 
-# Path to your MIDI file
-MIDI_FILE_PATH = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Source\VrPiano554\midi\Promise.mid"
+# Path to your MIDI files
+MIDI_DIR = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Source\VrPiano554\midi"
 POSITION_FILE_PATH = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\piano_position.json"
+
+midi_files = []
+current_midi_index = 0
+
+def update_midi_files():
+    global midi_files, MIDI_DIR
+    try:
+        files = [f for f in os.listdir(MIDI_DIR) if f.endswith('.mid') or f.endswith('.midi')]
+        midi_files = [os.path.join(MIDI_DIR, f) for f in files]
+        if midi_files:
+            print(f"INFO: Found {len(midi_files)} MIDI files.")
+            for i, f in enumerate(midi_files):
+                print(f"  {i}: {os.path.basename(f)}")
+        else:
+            print("WARNING: No MIDI files found in the specified directory.")
+    except Exception as e:
+        print(f"ERROR: Could not read MIDI directory: {e}")
+
+def get_current_midi_path():
+    global midi_files, current_midi_index
+    if not midi_files:
+        return None
+    return midi_files[current_midi_index]
+
+def select_next_midi():
+    global current_midi_index, midi_files
+    update_midi_files()
+    if not midi_files:
+        return
+    current_midi_index = (current_midi_index + 1) % len(midi_files)
+    new_midi_name = os.path.basename(get_current_midi_path())
+    print(f"Selected next MIDI: {new_midi_name}")
+    send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {new_midi_name}"})
+    restart_file_playback()
+
+def select_prev_midi():
+    global current_midi_index, midi_files
+    update_midi_files()
+    if not midi_files:
+        return
+    current_midi_index = (current_midi_index - 1 + len(midi_files)) % len(midi_files)
+    new_midi_name = os.path.basename(get_current_midi_path())
+    print(f"Selected previous MIDI: {new_midi_name}")
+    send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {new_midi_name}"})
+    restart_file_playback()
 
 # --- CRITICAL FIX FOR portmidi.dll DEPENDENCIES ---
 try:
@@ -56,8 +103,11 @@ except Exception as e:
 
 # --- Network Setup ---
 UDP_IP_SEND = "127.0.0.1"
-UDP_PORT_SEND = 5005
-send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+UDP_PORT_UI = 5007
+ui_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+UDP_PORT_NOTE = 5005
+note_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 UDP_IP_RECEIVE = "127.0.0.1"
 UDP_PORT_RECEIVE = 5006
@@ -88,14 +138,27 @@ key_pressed_event = threading.Event()
 stop_event = threading.Event()
 state_lock = threading.Lock()
 
-def send_udp_message(message_dict):
-    """Generic function to send any dictionary as a JSON UDP message."""
+def send_ui_update(message_dict):
+    """Sends a UI update message to Unreal."""
     try:
         json_message = json.dumps(message_dict)
+        print(f"[DEBUG] --> PY->UE (UI): Sending to {UDP_IP_SEND}:{UDP_PORT_UI}: {json_message}")  # Dodane logowanie
         message_bytes = json_message.encode('utf-8') + b'\0'
-        send_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_SEND))
+        ui_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_UI))
+        time.sleep(0.005)  # Dodane małe opóźnienie, aby uniknąć floodu pakietów
     except Exception as e:
-        print(f"ERROR sending UDP message: {e}")
+        print(f"ERROR sending UI update: {e}")
+
+def send_note_event(message_dict):
+    """Sends a note event message to Unreal."""
+    try:
+        json_message = json.dumps(message_dict)
+        # print(f"--> PY->UE (Note): Sending to {UDP_IP_SEND}:{UDP_PORT_NOTE}: {json_message}") # Optional: uncomment for debugging
+        message_bytes = json_message.encode('utf-8') + b'\0'
+        note_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_NOTE))
+        time.sleep(0.005)  # Dodane małe opóźnienie
+    except Exception as e:
+        print(f"ERROR sending note event: {e}")
 
 def send_midi_message(msg_type, note, velocity=None, duration=None, source="live"):
     global muted_all, muted_parser, speed_factor
@@ -112,7 +175,7 @@ def send_midi_message(msg_type, note, velocity=None, duration=None, source="live
             message["duration"] = adj_duration
         except Exception:
             pass
-    send_udp_message(message)
+    send_note_event(message)
     if (source == "live" and log_live) or (source == "file" and log_parser):
         print(f"Sent: {json.dumps(message)}")
 
@@ -170,6 +233,8 @@ def play_midi_file_prettymidi(file_path):
         print(f"[FilePlayback] Starting playback of {file_path} with {len(sorted_notes)} notes.")
         was_playing = True
 
+        send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {os.path.basename(file_path)}"})
+
         for note in sorted_notes:
             while is_paused and not stop_event.is_set():
                 time.sleep(0.1)
@@ -192,19 +257,19 @@ def play_midi_file_prettymidi(file_path):
                     notes_to_wait_for.clear()
                     notes_to_wait_for.add(note.pitch)
                 
-                send_udp_message({"type": "highlight_on", "notes": [note.pitch]})
+                send_note_event({"type": "highlight_on", "notes": [note.pitch]})
                 key_pressed_event.clear()
                 notes_str = f"{midi_to_note_name(note.pitch)} ({note.pitch})"
                 print(f"\033[93m[PRACTICE] Waiting for key: {notes_str}\033[0m")
                 
                 key_pressed_event.wait()
-                if stop_event.is_set(): break
+                if stop_event.is_set():
+                    break
 
             duration = max(0.0, note.end - note.start)
             send_velocity = 1 if muted_parser else note.velocity
             send_midi_message("note_on", note.pitch, velocity=send_velocity, duration=duration, source="file")
             play_sound(note.pitch, source="file")
-            send_udp_message({"command": "update_midi_info", "midi_info": f"File: {midi_to_note_name(note.pitch)}"})
 
             adj_duration = duration / speed_factor
             if adj_duration > 0:
@@ -240,9 +305,13 @@ def start_file_playback():
     if file_thread and file_thread.is_alive():
         restart_file_playback()
     else:
-        print("Rozpoczeto odtwarzanie pliku MIDI.")
+        print("Rozpoczęto odtwarzanie pliku MIDI.")
         init_pygame_mixer()
-        file_thread = threading.Thread(target=file_playback_thread, args=(MIDI_FILE_PATH,), daemon=True)
+        midi_path = get_current_midi_path()
+        if not midi_path:
+            print("ERROR: No MIDI file selected.")
+            return
+        file_thread = threading.Thread(target=file_playback_thread, args=(midi_path,), daemon=True)
         file_thread.start()
     was_playing = True
 
@@ -254,13 +323,20 @@ def restart_file_playback():
         file_thread.join(timeout=2.0)
         stop_event.clear()
 
-    for note in list(active_channels.keys()): stop_sound(note, force=True)
-    for timer in note_off_timers: timer.cancel()
+    for note in list(active_channels.keys()):
+        stop_sound(note, force=True)
+    for timer in note_off_timers:
+        timer.cancel()
     note_off_timers.clear()
 
     print("[FilePlayback] Restarting MIDI playback...")
     init_pygame_mixer()
-    file_thread = threading.Thread(target=file_playback_thread, args=(MIDI_FILE_PATH,), daemon=True)
+    midi_path = get_current_midi_path()
+    if not midi_path:
+        print("ERROR: No MIDI file selected.")
+        return
+    send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {os.path.basename(midi_path)}"})  # Dodane: Aktualizacja UI
+    file_thread = threading.Thread(target=file_playback_thread, args=(midi_path,), daemon=True)
     file_thread.start()
     was_playing = True
 
@@ -273,20 +349,25 @@ def live_midi_thread(preferred_port_substr="Arturia"):
         print(f"[LiveMIDI] Error getting MIDI input names: {e}")
         return
 
-    if not input_ports: print("[LiveMIDI] No MIDI input devices found."); return
+    if not input_ports:
+        print("[LiveMIDI] No MIDI input devices found.")
+        return
 
     print("\n[LiveMIDI] Available MIDI input devices:")
-    for i, port in enumerate(input_ports): print(f"  {i}: {port}")
+    for i, port in enumerate(input_ports):
+        print(f"  {i}: {port}")
 
     selected_port = next((p for p in input_ports if preferred_port_substr in p and "MIDIOUT2" not in p), None)
-    if not selected_port: selected_port = input_ports[0]
+    if not selected_port:
+        selected_port = input_ports[0]
     print(f"[LiveMIDI] Using MIDI port: {selected_port}")
 
     try:
         with mido.open_input(selected_port) as inport:
             print(f"[LiveMIDI] Listening on {selected_port} ...")
             for msg in inport:
-                if stop_event.is_set(): break
+                if stop_event.is_set():
+                    break
                 
                 is_note_on = msg.type == "note_on" and msg.velocity > 0
                 is_note_off = msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0)
@@ -295,7 +376,7 @@ def live_midi_thread(preferred_port_substr="Arturia"):
                     with state_lock:
                         if msg.note in notes_to_wait_for:
                             udp_msg = {"type": "highlight_off", "notes": [msg.note]}
-                            send_udp_message(udp_msg)
+                            send_note_event(udp_msg)
                             print(f"\033[94m[PRACTICE] Sent highlight_off for {midi_to_note_name(msg.note)} ({msg.note})\033[0m")
                             
                             notes_to_wait_for.remove(msg.note)
@@ -304,7 +385,8 @@ def live_midi_thread(preferred_port_substr="Arturia"):
                                 key_pressed_event.set()
                 
                 with state_lock:
-                    if muted_all or muted_live: continue
+                    if muted_all or muted_live:
+                        continue
 
                 if is_note_on:
                     send_midi_message("note_on", msg.note, velocity=msg.velocity, source="live")
@@ -351,67 +433,81 @@ def udp_receiver_thread():
             message = json.loads(data.decode('utf-8'))
             command = message.get("command")
             
-            print(f"Received command: {command}")
+            print(f"[DEBUG] Received command: {command}")  # Dodane logowanie
 
             if command == "kalibracja_x_mniej":
-                send_udp_message({"command": "adjust_x", "value": -1.0})
+                send_ui_update({"command": "adjust_x", "value": -1.0})
             elif command == "kalibracja_x_wiecej":
-                send_udp_message({"command": "adjust_x", "value": 1.0})
+                send_ui_update({"command": "adjust_x", "value": 1.0})
             elif command == "kalibracja_y_mniej":
-                send_udp_message({"command": "adjust_y", "value": -1.0})
+                send_ui_update({"command": "adjust_y", "value": -1.0})
             elif command == "kalibracja_y_wiecej":
-                send_udp_message({"command": "adjust_y", "value": 1.0})
+                send_ui_update({"command": "adjust_y", "value": 1.0})
             elif command == "kalibracja_z_mniej":
-                send_udp_message({"command": "adjust_z", "value": -1.0})
+                send_ui_update({"command": "adjust_z", "value": -1.0})
             elif command == "kalibracja_z_wiecej":
-                send_udp_message({"command": "adjust_z", "value": 1.0})
+                send_ui_update({"command": "adjust_z", "value": 1.0})
             elif command == "reset_pozycji":
-                send_udp_message({"command": "reset_position"})
+                send_ui_update({"command": "reset_position"})
             elif command == "wczytaj_pozycje":
                 position = load_position()
                 if position:
-                    send_udp_message({"command": "set_position", "position": position})
+                    send_ui_update({"command": "set_position", "position": position})
             elif command == "zapisz_pozycje":
-                # This command should be sent from Unreal with the current position
                 position = message.get("position")
                 if position:
                     save_position(position)
             elif command == "start_restart":
                 restart_file_playback()
+            elif command == "next_midi":
+                select_next_midi()
+            elif command == "prev_midi":
+                select_prev_midi()
             elif command == "pauza":
-                with state_lock: is_paused = not is_paused
-                print(f"Pauza {'wlaczona' if is_paused else 'wylaczona'}.")
+                with state_lock:
+                    is_paused = not is_paused
+                print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
             elif command == "tryb_nauki":
                 with state_lock:
                     wait_for_key_mode = not wait_for_key_mode
                     key_pressed_event.set()
-                print(f"Tryb nauki {'WLACZONY' if wait_for_key_mode else 'WYLACZONY'}")
+                print(f"Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
             elif command == "life_hold":
-                with state_lock: live_hold_mode = not live_hold_mode
-                print(f"LIVE hold {'wlaczone' if live_hold_mode else 'wylaczone'}.")
+                with state_lock:
+                    live_hold_mode = not live_hold_mode
+                print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
             elif command == "midi_wolniej":
-                with state_lock: speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
-                print(f"Predkosc odtwarzania: {int(speed_factor * 100)}%")
+                with state_lock:
+                    speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
+                    send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
+                print(f"[DEBUG] Prędkość odtwarzania zmieniona na: {int(speed_factor * 100)}%")  # Dodane logowanie
             elif command == "midi_szybciej":
-                with state_lock: speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
-                print(f"Predkosc odtwarzania: {int(speed_factor * 100)}%")
+                with state_lock:
+                    speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
+                    send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
+                print(f"[DEBUG] Prędkość odtwarzania zmieniona na: {int(speed_factor * 100)}%")  # Dodane logowanie
             elif command == "mute_file":
-                with state_lock: muted_parser = not muted_parser
+                with state_lock:
+                    muted_parser = not muted_parser
                 print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
             elif command == "mute_live":
-                with state_lock: muted_live = not muted_live
+                with state_lock:
+                    muted_live = not muted_live
                 print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
             elif command == "unmute_all":
-                with state_lock: muted_all = False; muted_live = False; muted_parser = False
-                print("Wszystkie tryby wyciszenia wylaczone.")
+                with state_lock:
+                    muted_all = False
+                    muted_live = False
+                    muted_parser = False
+                print("Wszystkie tryby wyciszenia wyłączone.")
             elif command == "toggle_loop":
-                with state_lock: loop_midi = not loop_midi
-                send_udp_message({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
-                print(f"Looping MIDI {'wlaczone' if loop_midi else 'wylaczone'}.")
+                with state_lock:
+                    loop_midi = not loop_midi
+                send_ui_update({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
+                print(f"Looping MIDI {'włączone' if loop_midi else 'wyłączone'}.")
 
         except Exception as e:
             print(f"Error processing command: {e}")
-
 
 # ---------- Control / Command Loop ----------
 def main_loop():
@@ -419,6 +515,8 @@ def main_loop():
 
     print("Komendy:\n" 
           " s - start/restart file MIDI playback\n" 
+          " n - next MIDI file\n" 
+          " b - previous MIDI file\n" 
           " w - toggle practice mode (wait for key press)\n" 
           " p - toggle pause\n" 
           " f - toggle mute file playback\n" 
@@ -429,8 +527,15 @@ def main_loop():
           " . - przyspiesz o 5%\n" 
           " , - zwolnij o 5%\n" 
           " q - quit\n")
+    
+    update_midi_files()
     start_live_midi()
     
+    # Send initial state to UI
+    initial_midi = os.path.basename(get_current_midi_path()) if get_current_midi_path() else "None"
+    send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {initial_midi}"})
+    send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
+
     receiver = threading.Thread(target=udp_receiver_thread, daemon=True)
     receiver.start()
 
@@ -438,44 +543,66 @@ def main_loop():
         try:
             cmd = input("Podaj komende: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
-            print("\nExiting..."); break
+            print("\nExiting...")
+            break
 
         if cmd == "q":
-            print("Zamykanie programu..."); stop_event.set(); key_pressed_event.set(); break
+            print("Zamykanie programu...")
+            stop_event.set()
+            key_pressed_event.set()
+            break
         elif cmd == "s" or cmd == "r":
             restart_file_playback()
+        elif cmd == "n":
+            select_next_midi()
+        elif cmd == "b":
+            select_prev_midi()
         elif cmd == "w":
             with state_lock:
                 wait_for_key_mode = not wait_for_key_mode
                 key_pressed_event.set()
-            print(f"\033[96m[PRACTICE] Tryb nauki {'WLACZONY' if wait_for_key_mode else 'WYLACZONY'}\033[0m")
+            print(f"\033[96m[PRACTICE] Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
         elif cmd == "f":
-            with state_lock: muted_parser = not muted_parser
+            with state_lock:
+                muted_parser = not muted_parser
             print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
         elif cmd == "v":
-            with state_lock: muted_live = not muted_live
+            with state_lock:
+                muted_live = not muted_live
             print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
         elif cmd == "m":
-            with state_lock: muted_all = not muted_all
-            if muted_all: 
-                for n in list(active_channels.keys()): stop_sound(n, force=True)
-                print("Calkowite wyciszenie wlaczone.")
-            else: print("Calkowite wyciszenie wylaczone.")
+            with state_lock:
+                muted_all = not muted_all
+                if muted_all:
+                    for n in list(active_channels.keys()):
+                        stop_sound(n, force=True)
+                    print("Całkowite wyciszenie włączone.")
+                else:
+                    print("Całkowite wyciszenie wyłączone.")
         elif cmd == "u":
-            with state_lock: muted_all = False; muted_live = False; muted_parser = False
-            print("Wszystkie tryby wyciszenia wylaczone.")
+            with state_lock:
+                muted_all = False
+                muted_live = False
+                muted_parser = False
+            print("Wszystkie tryby wyciszenia wyłączone.")
         elif cmd == "p":
-            with state_lock: is_paused = not is_paused
-            print(f"Pauza {'wlaczona' if is_paused else 'wylaczona'}.")
+            with state_lock:
+                is_paused = not is_paused
+            print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
         elif cmd == "h":
-            with state_lock: live_hold_mode = not live_hold_mode
-            print(f"LIVE hold {'wlaczone' if live_hold_mode else 'wylaczone'}.")
+            with state_lock:
+                live_hold_mode = not live_hold_mode
+            print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
         elif cmd == ".":
-            with state_lock: speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
-            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}%\033[0m")
+            with state_lock:
+                speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
+                send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
+            print(f"\033[91m[SPEED] Prędkość odtwarzania: {int(speed_factor * 100)}%")
         elif cmd == ",":
-            with state_lock: speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
-            print(f"\033[91m[SPEED] Predkosc odtwarzania: {int(speed_factor * 100)}%\033[0m")
+            with state_lock:
+                speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
+                send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
+            print(f"\033[91m[SPEED] Prędkość odtwarzania: {int(speed_factor * 100)}%")
         else:
             print(f"Nieznana komenda: {cmd}")
 
@@ -486,7 +613,7 @@ def main_loop():
         file_thread.join(timeout=2)
     for n in list(active_channels.keys()):
         stop_sound(n, force=True)
-    print("Program zakonczyl dzialanie.")
+    print("Program zakończył działanie.")
 
 if __name__ == "__main__":
     main_loop()

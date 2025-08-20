@@ -27,9 +27,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileMuteStateChanged, bool, bNewS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeHoldStateChanged, bool, bNewState);
 
-// Delegate for MIDI tempo changes
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMidiTempoChanged, float, NewTempo);
-
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
 {
@@ -169,12 +166,6 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Menu")
     FOnLifeHoldStateChanged OnLifeHoldStateChanged;
-
-    UPROPERTY(BlueprintReadWrite, Category = "Menu")
-    float CurrentMidiTempo; // Added for MIDI Tempo
-
-    UPROPERTY(BlueprintAssignable, Category = "Menu")
-    FOnMidiTempoChanged OnMidiTempoChanged; // Added for MIDI Tempo
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)

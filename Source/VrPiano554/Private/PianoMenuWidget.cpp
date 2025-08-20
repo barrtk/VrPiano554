@@ -138,11 +138,11 @@ void UPianoMenuWidget::NativeConstruct()
     // Bind TextBlocks
     if (aktualneMidi) aktualneMidi->SetText(FText::FromString(TEXT("MIDI: Loading...")));
     if (TextBlock_25) TextBlock_25->SetText(FText::FromString(TEXT("Pos: Not Saved")));
-    if (MidiTempo) MidiTempo->SetText(FText::FromString(TEXT("Tempo: 100")));
+    if (midiTempo) midiTempo->SetText(FText::FromString(TEXT("Tempo: 100")));
 
     // Create UDP socket for receiving
     FIPv4Address BindAddr = FIPv4Address::Any;
-    FIPv4Endpoint Endpoint(BindAddr, 5006);
+    FIPv4Endpoint Endpoint(BindAddr, 5007);
 
     FSocket* ReceiveSocket = FUdpSocketBuilder(TEXT("PianoMenuWidgetReceiverSocket"))
         .AsReusable()
@@ -151,11 +151,12 @@ void UPianoMenuWidget::NativeConstruct()
 
     if (ReceiveSocket)
     {
+        UE_LOG(LogTemp, Warning, TEXT("UDP Receive Socket created successfully on port 5007."));
         UdpReceiverWorker = new FUdpReceiverWorker(ReceiveSocket, this);
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to create UDP Receive Socket!"));
+        UE_LOG(LogTemp, Error, TEXT("Failed to create UDP Receive Socket on port 5007!"));
     }
 
     // Bind to PianoActor delegates and initialize button states
@@ -165,7 +166,14 @@ void UPianoMenuWidget::NativeConstruct()
         PianoActor->OnLearningModeStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLearningModeStateChanged);
         PianoActor->OnFileMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleFileMuteStateChanged);
         PianoActor->OnLiveMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLiveMuteStateChanged);
-        PianoActor->OnMidiTempoChanged.AddDynamic(this, &UPianoMenuWidget::HandleMidiTempoChanged);
+
+        // If the file is not muted by default in the actor, but we want it to be,
+        // toggle the state so that the actor's state becomes true.
+        // This will broadcast the change and update the button color via the delegate.
+        if (!PianoActor->bIsFileMuted)
+        {
+            PianoActor->ToggleFileMute();
+        }
 
         // Initialize button states
         UpdateButtonState(TEXT("pauza"), PianoActor->bIsPaused);
@@ -174,7 +182,7 @@ void UPianoMenuWidget::NativeConstruct()
         UpdateButtonState(TEXT("mute_live"), PianoActor->bIsLiveMuted);
         UpdateButtonState(TEXT("toggle_loop"), false); // Assume loop is initially off
         // Initialize tempo text
-        HandleMidiTempoChanged(PianoActor->CurrentMidiTempo);
+        HandleMidiTempoChanged(100);
     }
 }
 
@@ -192,7 +200,7 @@ void UPianoMenuWidget::BeginDestroy()
 
 void UPianoMenuWidget::ReceiveUDPData(const FString& Message)
 {
-    UE_LOG(LogTemp, Warning, TEXT("ReceiveUDPData called with message: %s"), *Message);
+    UE_LOG(LogTemp, Warning, TEXT("UE <-- PY: ReceiveUDPData called with message: %s"), *Message);
     TSharedRef<TJsonReader<>> JsonReader = TJsonReaderFactory<>::Create(Message);
     TSharedPtr<FJsonValue> JsonValue;
 
@@ -201,33 +209,56 @@ void UPianoMenuWidget::ReceiveUDPData(const FString& Message)
         TSharedPtr<FJsonObject> JsonObject = JsonValue->AsObject();
         if (JsonObject.IsValid())
         {
-            FString Command = JsonObject->GetStringField(TEXT("command"));
-
-            if (Command == TEXT("update_button_state"))
+            FString Command;
+            if (JsonObject->TryGetStringField(TEXT("command"), Command))
             {
-                FString ButtonName = JsonObject->GetStringField(TEXT("button"));
-                bool bIsActive = JsonObject->GetBoolField(TEXT("is_active"));
-                UE_LOG(LogTemp, Warning, TEXT("Received update_button_state for Button: %s, IsActive: %s"), *ButtonName, bIsActive ? TEXT("True") : TEXT("False"));
-                UpdateButtonState(ButtonName, bIsActive);
-            }
-            else if (Command == TEXT("update_midi_info"))
-            {
-                FString MidiInfo = JsonObject->GetStringField(TEXT("midi_info"));
-                UpdateMidiText(MidiInfo);
-            }
-            else if (Command == TEXT("update_position_info"))
-            {
-                TSharedPtr<FJsonObject> PosObject = JsonObject->GetObjectField(TEXT("position"));
-                if (PosObject.IsValid())
+                if (Command == TEXT("update_button_state"))
                 {
-                    FVector Position;
-                    Position.X = PosObject->GetNumberField(TEXT("X"));
-                    Position.Y = PosObject->GetNumberField(TEXT("Y"));
-                    Position.Z = PosObject->GetNumberField(TEXT("Z"));
-                    UpdatePositionText(Position);
+                    FString ButtonName = JsonObject->GetStringField(TEXT("button"));
+                    bool bIsActive = JsonObject->GetBoolField(TEXT("is_active"));
+                    UE_LOG(LogTemp, Warning, TEXT("Received update_button_state for Button: %s, IsActive: %s"), *ButtonName, bIsActive ? TEXT("True") : TEXT("False"));
+                    UpdateButtonState(ButtonName, bIsActive);
+                }
+                else if (Command == TEXT("update_midi_info"))
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("Command 'update_midi_info' received."));
+                    if (!aktualneMidi)
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("FATAL: aktualneMidi TextBlock is NULL! Check UMG binding."));
+                        return;
+                    }
+                    FString MidiInfo = JsonObject->GetStringField(TEXT("midi_info"));
+                    UpdateMidiText(MidiInfo);
+                }
+                else if (Command == TEXT("update_tempo"))
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("Command 'update_tempo' received."));
+                    if (!midiTempo)
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("FATAL: midiTempo TextBlock is NULL! Check UMG binding."));
+                        return;
+                    }
+                    int32 NewTempo = JsonObject->GetIntegerField(TEXT("tempo"));
+                    HandleMidiTempoChanged(NewTempo);
+                }
+                else if (Command == TEXT("update_position_info"))
+                {
+                    TSharedPtr<FJsonObject> PosObject = JsonObject->GetObjectField(TEXT("position"));
+                    if (PosObject.IsValid())
+                    {
+                        FVector Position;
+                        Position.X = PosObject->GetNumberField(TEXT("X"));
+                        Position.Y = PosObject->GetNumberField(TEXT("Y"));
+                        Position.Z = PosObject->GetNumberField(TEXT("Z"));
+                        UpdatePositionText(Position);
+                    }
                 }
             }
         }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to deserialize JSON message: %s"), *Message);
     }
 }
 
@@ -465,11 +496,11 @@ void UPianoMenuWidget::HandleLiveMuteStateChanged(bool bNewLiveMuteState)
     UpdateButtonState(TEXT("mute_live"), bNewLiveMuteState);
 }
 
-void UPianoMenuWidget::HandleMidiTempoChanged(float NewTempo)
+void UPianoMenuWidget::HandleMidiTempoChanged(int32 NewTempo)
 {
-    if (MidiTempo)
+    if (midiTempo)
     {
-        FString TempoString = FString::Printf(TEXT("Tempo: %.0f"), NewTempo);
-        MidiTempo->SetText(FText::FromString(TempoString));
+        FString TempoString = FString::Printf(TEXT("Tempo: %d%%"), NewTempo);
+        midiTempo->SetText(FText::FromString(TempoString));
     }
 }

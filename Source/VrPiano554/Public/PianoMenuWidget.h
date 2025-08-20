@@ -66,7 +66,7 @@ public:
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
     class UTextBlock* TextBlock_25;
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-    class UTextBlock* MidiTempo; // New MidiTempo TextBlock
+    class UTextBlock* midiTempo;
 
 protected:
     virtual void NativeConstruct() override;
@@ -125,7 +125,7 @@ protected:
     UFUNCTION()
     void HandleLiveMuteStateChanged(bool bNewLiveMuteState);
     UFUNCTION()
-    void HandleMidiTempoChanged(float NewTempo); // New MidiTempo handler
+    void HandleMidiTempoChanged(int32 NewTempo); // New MidiTempo handler
 
 private:
     bool bIsPauzaActive;
@@ -146,3 +146,6 @@ private:
     // SendUDPCommand declaration (removed from here, now in PianoActor)
     // void SendUDPCommand(const FString& Command);
 };
+
+// Removed FUdpReceiverWorker from here, now encapsulated in .cpp
+// class FUdpReceiverWorker;

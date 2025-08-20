@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -35,7 +35,7 @@ public:
 
     /** Port UDP do nasłuchiwania (np. 5005) */
     UPROPERTY(EditAnywhere, Category = "Networking")
-    int32 ListenPort = 5005;
+    int32 ListenPort = 5008; // Changed port to 5008 to avoid conflict
 
 private:
     int32 NextBlockIndex;
