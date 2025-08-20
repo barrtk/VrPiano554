@@ -12,8 +12,20 @@
 #include "PianoActor.generated.h"
 
 class UWidgetComponent;
+class FSocket; // Forward declaration for FSocket
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMenuToggled, bool, bIsMenuVisible);
+
+// Delegate for pause state changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPauseStateChanged, bool, bNewPauseState);
+
+// Delegate for learning mode state changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLearningModeStateChanged, bool, bNewLearningModeState);
+
+// Delegates for Mute and Life Hold
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileMuteStateChanged, bool, bNewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeHoldStateChanged, bool, bNewState);
 
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
@@ -65,10 +77,41 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Piano|SaveLoad")
     void ResetPosition();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void TogglePauseState();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void ToggleLearningMode();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void ToggleFileMute();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void ToggleLiveMute();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
+    void ToggleLifeHold();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void MidiSlower();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void MidiFaster();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void UnmuteAll();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
+    void ToggleLoop();
+
+    UFUNCTION(BlueprintCallable, Category = "Piano|Game")
+    void StartRestart();
     //~ End Menu Functions
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Added for socket cleanup
     virtual void Tick(float DeltaTime) override;
     
 
@@ -89,6 +132,36 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Piano|Menu")
     FOnMenuToggled OnMenuToggled;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    bool bIsPaused;
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnPauseStateChanged OnPauseStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    bool bIsLearningMode;
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnLearningModeStateChanged OnLearningModeStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    bool bIsFileMuted;
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnFileMuteStateChanged OnFileMuteStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    bool bIsLiveMuted;
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnLiveMuteStateChanged OnLiveMuteStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Menu")
+    bool bIsLifeHoldActive;
+
+    UPROPERTY(BlueprintAssignable, Category = "Menu")
+    FOnLifeHoldStateChanged OnLifeHoldStateChanged;
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)
@@ -163,5 +236,9 @@ private:
     void OnRightTriggerReleased();
     void OnLeftTriggerPressed();
     void OnLeftTriggerReleased();
+
+    // UDP Socket for sending commands
+    FSocket* SenderSocket; // Added
+    void SendUDPCommand(const FString& Command); // Added
 
 };

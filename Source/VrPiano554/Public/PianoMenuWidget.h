@@ -40,15 +40,11 @@ public:
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_6;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_7;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_8;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_9;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_10;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_11;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_12;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
@@ -59,14 +55,10 @@ public:
 	class UButton* Button_15;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UButton* Button_16;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_24;
-	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UButton* Button_25;
 
 	// Properties for text blocks used in NativeConstruct
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-	class UTextBlock* TextBlock_22;
+	class UTextBlock* aktualneMidi;
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	class UTextBlock* TextBlock_25;
 
@@ -97,17 +89,11 @@ protected:
 	UFUNCTION()
 	void OnButton_ResetClicked();
 	UFUNCTION()
-	void OnButton_WczytajPozycjeClicked();
-	UFUNCTION()
-	void OnButton_ZapiszPozycjeClicked();
-	UFUNCTION()
 	void OnButton_StartRestartClicked();
 	UFUNCTION()
 	void OnButton_PauzaClicked();
 	UFUNCTION()
 	void OnButton_TrybNaukiClicked();
-	UFUNCTION()
-	void OnButton_LifeHoldClicked();
 	UFUNCTION()
 	void OnButton_MidiWolniejClicked();
 	UFUNCTION()
@@ -117,9 +103,17 @@ protected:
 	UFUNCTION()
 	void OnButton_MuteLiveClicked();
 	UFUNCTION()
-	void OnButton_UnmuteAllClicked();
-	UFUNCTION()
 	void OnButton_ToggleLoopClicked();
+
+	// Handlers for PianoActor state changes
+	UFUNCTION()
+	void HandlePauseStateChanged(bool bNewPauseState);
+	UFUNCTION()
+	void HandleLearningModeStateChanged(bool bNewLearningModeState);
+	UFUNCTION()
+	void HandleFileMuteStateChanged(bool bNewFileMuteState);
+	UFUNCTION()
+	void HandleLiveMuteStateChanged(bool bNewLiveMuteState);
 
 private:
 	bool bIsPauzaActive;
@@ -134,9 +128,9 @@ public: // Moved to public section for external access
 	void UpdateButtonState(const FString& ButtonName, bool bIsActive);
 
 private:
-	// Socket declaration
-	FSocket* Socket;
+	// Socket declaration (removed from here, now in PianoActor)
+	// FSocket* Socket;
 
-	// SendUDPCommand declaration (used in .cpp, not a UFUNCTION)
-	void SendUDPCommand(const FString& Command);
+	// SendUDPCommand declaration (removed from here, now in PianoActor)
+	// void SendUDPCommand(const FString& Command);
 };

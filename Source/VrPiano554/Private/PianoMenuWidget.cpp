@@ -125,29 +125,20 @@ void UPianoMenuWidget::NativeConstruct()
 	if (Button_4) Button_4->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_KalibracjaZMniejClicked);
 	if (Button_5) Button_5->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_KalibracjaZWiecejClicked);
 	if (Button_6) Button_6->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_ResetClicked);
-	if (Button_7) Button_7->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_WczytajPozycjeClicked);
-	if (Button_25) Button_25->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_ZapiszPozycjeClicked);
 
 	if (Button_8) Button_8->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_StartRestartClicked);
 	if (Button_9) Button_9->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_PauzaClicked);
 	if (Button_10) Button_10->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_TrybNaukiClicked);
-	if (Button_11) Button_11->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_LifeHoldClicked);
 	if (Button_12) Button_12->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MidiWolniejClicked);
 	if (Button_13) Button_13->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MidiSzybciejClicked);
 	if (Button_14) Button_14->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MuteFileClicked);
 	if (Button_15) Button_15->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MuteLiveClicked);
-	if (Button_24) Button_24->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_UnmuteAllClicked);
 
 	if (Button_16) Button_16->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_ToggleLoopClicked);
 
 	// Bind TextBlocks
-	if (TextBlock_22) TextBlock_22->SetText(FText::FromString(TEXT("MIDI: Loading...")));
+	if (aktualneMidi) aktualneMidi->SetText(FText::FromString(TEXT("MIDI: Loading...")));
 	if (TextBlock_25) TextBlock_25->SetText(FText::FromString(TEXT("Pos: Not Saved")));
-
-	// Create UDP socket for sending
-	Socket = FUdpSocketBuilder(TEXT("PianoMenuWidgetSenderSocket"))
-		.AsReusable()
-		.WithBroadcast();
 
 	// Create UDP socket for receiving
 	FIPv4Address BindAddr = FIPv4Address::Any;
@@ -166,6 +157,21 @@ void UPianoMenuWidget::NativeConstruct()
 	{
 		UE_LOG(LogTemp, Error, TEXT("Failed to create UDP Receive Socket!"));
 	}
+
+	// Bind to PianoActor delegates and initialize button states
+	if (PianoActor)
+	{
+		PianoActor->OnPauseStateChanged.AddDynamic(this, &UPianoMenuWidget::HandlePauseStateChanged);
+		PianoActor->OnLearningModeStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLearningModeStateChanged);
+		PianoActor->OnFileMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleFileMuteStateChanged);
+		PianoActor->OnLiveMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLiveMuteStateChanged);
+
+		// Initialize button states
+		UpdateButtonState(TEXT("pauza"), PianoActor->bIsPaused);
+		UpdateButtonState(TEXT("tryb_nauki"), PianoActor->bIsLearningMode);
+		UpdateButtonState(TEXT("mute_file"), PianoActor->bIsFileMuted);
+		UpdateButtonState(TEXT("mute_live"), PianoActor->bIsLiveMuted);
+	}
 }
 
 void UPianoMenuWidget::BeginDestroy()
@@ -179,34 +185,36 @@ void UPianoMenuWidget::BeginDestroy()
 		UdpReceiverWorker = nullptr;
 	}
 
-	if (Socket)
-	{
-		Socket->Close();
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
-	}
+	// Sender socket cleanup is now handled by PianoActor
+	// if (Socket)
+	// {
+	// 	Socket->Close();
+	// 	ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
+	// }
 }
 
-void UPianoMenuWidget::SendUDPCommand(const FString& Command)
-{
-	if (!Socket)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Socket is not initialized!"));
-		return;
-	}
+// SendUDPCommand is now handled by PianoActor
+// void UPianoMenuWidget::SendUDPCommand(const FString& Command)
+// {
+// 	if (!Socket)
+// 	{
+// 		UE_LOG(LogTemp, Error, TEXT("Socket is not initialized!"));
+// 		return;
+// 	}
 
-	FString JsonString = FString::Printf(TEXT("{\"command\": \"%s\"}"), *Command);
-	TArray<uint8> Data;
-	Data.Append((uint8*)TCHAR_TO_UTF8(*JsonString), JsonString.Len());
+// 	FString JsonString = FString::Printf(TEXT("{\"command\": \"%s\"}"), *Command);
+// 	TArray<uint8> Data;
+// 	Data.Append((uint8*)TCHAR_TO_UTF8(*JsonString), JsonString.Len());
 
-	FIPv4Address Addr;
-	FIPv4Address::Parse(TEXT("127.0.0.1"), Addr);
-	TSharedRef<FInternetAddr> InternetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-	InternetAddr->SetIp(Addr.Value);
-	InternetAddr->SetPort(5006);
+// 	FIPv4Address Addr;
+// 	FIPv4Address::Parse(TEXT("127.0.0.1"), Addr);
+// 	TSharedRef<FInternetAddr> InternetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+// 	InternetAddr->SetIp(Addr.Value);
+// 	InternetAddr->SetPort(5006);
 
-	int32 BytesSent = 0;
-	Socket->SendTo(Data.GetData(), Data.Num(), BytesSent, *InternetAddr);
-}
+// 	int32 BytesSent = 0;
+// 	Socket->SendTo(Data.GetData(), Data.Num(), BytesSent, *InternetAddr);
+// }
 
 void UPianoMenuWidget::ReceiveUDPData(const FString& Message)
 {
@@ -296,9 +304,9 @@ void UPianoMenuWidget::UpdatePositionText(const FVector& Position)
 
 void UPianoMenuWidget::UpdateMidiText(const FString& MidiInfo)
 {
-	if (TextBlock_22)
+	if (aktualneMidi)
 	{
-		TextBlock_22->SetText(FText::FromString(MidiInfo));
+		aktualneMidi->SetText(FText::FromString(MidiInfo));
 	}
 }
 
@@ -337,70 +345,124 @@ void UPianoMenuWidget::OnButton_ResetClicked()
 	if(PianoActor) PianoActor->ResetPosition();
 }
 
-void UPianoMenuWidget::OnButton_WczytajPozycjeClicked()
-{
-	if(PianoActor) PianoActor->LoadPosition();
-}
-
-void UPianoMenuWidget::OnButton_ZapiszPozycjeClicked()
-{
-	if(PianoActor) PianoActor->SavePosition();
-}
-
 void UPianoMenuWidget::OnButton_StartRestartClicked()
 {
-	SendUDPCommand(TEXT("start_restart"));
+	if (PianoActor)
+	{
+		PianoActor->StartRestart();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to start/restart!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_PauzaClicked()
 {
-	bIsPauzaActive = !bIsPauzaActive;
-	UpdateButtonState(TEXT("pauza"), bIsPauzaActive);
-	SendUDPCommand(TEXT("pauza"));
+	if (PianoActor)
+	{
+		PianoActor->TogglePauseState();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle pause state!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_TrybNaukiClicked()
 {
-	SendUDPCommand(TEXT("tryb_nauki"));
-}
-
-void UPianoMenuWidget::OnButton_LifeHoldClicked()
-{
-	SendUDPCommand(TEXT("life_hold"));
+	if (PianoActor)
+	{
+		PianoActor->ToggleLearningMode();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle learning mode!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_MidiWolniejClicked()
 {
-	SendUDPCommand(TEXT("midi_wolniej"));
+	if (PianoActor)
+	{
+		PianoActor->MidiSlower();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to slow midi!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_MidiSzybciejClicked()
 {
-	SendUDPCommand(TEXT("midi_szybciej"));
+	if (PianoActor)
+	{
+		PianoActor->MidiFaster();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to speed up midi!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_MuteFileClicked()
 {
-	SendUDPCommand(TEXT("mute_file"));
+	if (PianoActor)
+	{
+		PianoActor->ToggleFileMute();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle file mute!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_MuteLiveClicked()
 {
-	SendUDPCommand(TEXT("mute_live"));
-}
-
-void UPianoMenuWidget::OnButton_UnmuteAllClicked()
-{
-	SendUDPCommand(TEXT("unmute_all"));
+	if (PianoActor)
+	{
+		PianoActor->ToggleLiveMute();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle live mute!"));
+	}
 }
 
 void UPianoMenuWidget::OnButton_ToggleLoopClicked()
 {
-	SendUDPCommand(TEXT("toggle_loop"));
+	if (PianoActor)
+	{
+		PianoActor->ToggleLoop();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle loop!"));
+	}
 }
 
 void UPianoMenuWidget::OnStartButtonClicked()
 {
 	// Implement logic for Start button click
 	UE_LOG(LogTemp, Warning, TEXT("Start Button Clicked!"));
+}
+
+void UPianoMenuWidget::HandlePauseStateChanged(bool bNewPauseState)
+{
+    UpdateButtonState(TEXT("pauza"), bNewPauseState);
+}
+
+void UPianoMenuWidget::HandleLearningModeStateChanged(bool bNewLearningModeState)
+{
+    UpdateButtonState(TEXT("tryb_nauki"), bNewLearningModeState);
+}
+
+void UPianoMenuWidget::HandleFileMuteStateChanged(bool bNewFileMuteState)
+{
+    UpdateButtonState(TEXT("mute_file"), bNewFileMuteState);
+}
+
+void UPianoMenuWidget::HandleLiveMuteStateChanged(bool bNewLiveMuteState)
+{
+    UpdateButtonState(TEXT("mute_live"), bNewLiveMuteState);
 }

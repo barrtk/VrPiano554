@@ -12,6 +12,10 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/WidgetComponent.h"
 #include "PianoMenuWidget.h" // Required for UPianoMenuWidget
+#include "Sockets.h" // Added for FSocket
+#include "SocketSubsystem.h" // Added for ISocketSubsystem
+#include "Interfaces/IPv4/IPv4Address.h" // Added for FIPv4Address
+#include "Common/UdpSocketBuilder.h" // Added for FUdpSocketBuilder
 
 APianoActor::APianoActor()
 {
@@ -67,6 +71,14 @@ APianoActor::APianoActor()
     WidgetInteractionComponent->InteractionSource = EWidgetInteractionSource::World;
     WidgetInteractionComponent->PointerIndex = 0;
     WidgetInteractionComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
+
+    bIsPaused = false;
+    bIsLearningMode = false;
+    bIsFileMuted = false;
+    bIsLiveMuted = false;
+    bIsLifeHoldActive = false;
+
+    SenderSocket = nullptr; // Initialize socket pointer
 }
 
 void APianoActor::BeginPlay()
@@ -166,9 +178,29 @@ void APianoActor::BeginPlay()
     }
 
     UE_LOG(LogTemp, Warning, TEXT("PianoActor: Hierarchia przebudowana w kodzie."));
+
+    // Initialize UDP sender socket
+    SenderSocket = FUdpSocketBuilder(TEXT("PianoActorSenderSocket"))
+        .AsReusable()
+        .WithBroadcast();
+
+    if (!SenderSocket)
+    {
+        UE_LOG(LogTemp, Error, TEXT("APianoActor: Failed to create UDP Sender Socket!"));
+    }
 }
 
+void APianoActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    Super::EndPlay(EndPlayReason);
 
+    if (SenderSocket)
+    {
+        SenderSocket->Close();
+        ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(SenderSocket);
+        SenderSocket = nullptr;
+    }
+}
 
 void APianoActor::ToggleMenu()
 {
@@ -462,3 +494,89 @@ void APianoActor::ResetPosition()
     SetActorTransform(FTransform::Identity);
 }
 
+void APianoActor::SendUDPCommand(const FString& Command)
+{
+    if (!SenderSocket)
+    {
+        UE_LOG(LogTemp, Error, TEXT("APianoActor: SenderSocket is not initialized!"));
+        return;
+    }
+
+    FString JsonString = FString::Printf(TEXT("{\"command\": \"%s\"}"), *Command);
+    TArray<uint8> Data;
+    Data.Append((uint8*)TCHAR_TO_UTF8(*JsonString), JsonString.Len());
+
+    FIPv4Address Addr;
+    FIPv4Address::Parse(TEXT("127.0.0.1"), Addr);
+    TSharedRef<FInternetAddr> InternetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+    InternetAddr->SetIp(Addr.Value);
+    InternetAddr->SetPort(5006);
+
+    int32 BytesSent = 0;
+    SenderSocket->SendTo(Data.GetData(), Data.Num(), BytesSent, *InternetAddr);
+}
+
+void APianoActor::TogglePauseState()
+{
+    bIsPaused = !bIsPaused;
+    OnPauseStateChanged.Broadcast(bIsPaused);
+    SendUDPCommand(TEXT("pauza"));
+}
+
+void APianoActor::ToggleLearningMode()
+{
+    bIsLearningMode = !bIsLearningMode;
+    OnLearningModeStateChanged.Broadcast(bIsLearningMode);
+    SendUDPCommand(TEXT("tryb_nauki"));
+}
+
+void APianoActor::ToggleFileMute()
+{
+    bIsFileMuted = !bIsFileMuted;
+    OnFileMuteStateChanged.Broadcast(bIsFileMuted);
+    SendUDPCommand(TEXT("mute_file"));
+}
+
+void APianoActor::ToggleLiveMute()
+{
+    bIsLiveMuted = !bIsLiveMuted;
+    OnLiveMuteStateChanged.Broadcast(bIsLiveMuted);
+    SendUDPCommand(TEXT("mute_live"));
+}
+
+void APianoActor::ToggleLifeHold()
+{
+    bIsLifeHoldActive = !bIsLifeHoldActive;
+    OnLifeHoldStateChanged.Broadcast(bIsLifeHoldActive);
+    SendUDPCommand(TEXT("life_hold"));
+}
+
+void APianoActor::MidiSlower()
+{
+    SendUDPCommand(TEXT("midi_wolniej"));
+}
+
+void APianoActor::MidiFaster()
+{
+    SendUDPCommand(TEXT("midi_szybciej"));
+}
+
+void APianoActor::UnmuteAll()
+{
+    SendUDPCommand(TEXT("unmute_all"));
+}
+
+void APianoActor::ToggleLoop()
+{
+    SendUDPCommand(TEXT("toggle_loop"));
+}
+
+void APianoActor::StartRestart()
+{
+    SendUDPCommand(TEXT("start_restart"));
+    UKismetSystemLibrary::PrintString(this, TEXT("Restarting MIDI and Application..."), true, true, FLinearColor::Blue, 10.f);
+    if (PianoMenuWidgetInstance)
+    {
+        PianoMenuWidgetInstance->UpdateMidiText(TEXT("MIDI: Restarting..."));
+    }
+}
