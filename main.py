@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 
 import os
 import sys
@@ -505,6 +505,9 @@ def udp_receiver_thread():
                     loop_midi = not loop_midi
                 send_ui_update({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
                 print(f"Looping MIDI {'włączone' if loop_midi else 'wyłączone'}.")
+            elif command == "toggle_file_animation_mute":
+                # This command is handled by Unreal, but we can log it here
+                print("Received toggle_file_animation_mute command from Unreal.")
 
         except Exception as e:
             print(f"Error processing command: {e}")
@@ -579,12 +582,6 @@ def main_loop():
                     print("Całkowite wyciszenie włączone.")
                 else:
                     print("Całkowite wyciszenie wyłączone.")
-        elif cmd == "u":
-            with state_lock:
-                muted_all = False
-                muted_live = False
-                muted_parser = False
-            print("Wszystkie tryby wyciszenia wyłączone.")
         elif cmd == "p":
             with state_lock:
                 is_paused = not is_paused

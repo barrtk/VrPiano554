@@ -139,14 +139,7 @@ void AUDPMidiReceiver::Tick(float DeltaTime)
 
                         if (PianoActorRef)
                         {
-                            if (isNoteOn)
-                            {
-                                PianoActorRef->PressKey(noteNumber);
-                            }
-                            else
-                            {
-                                PianoActorRef->ReleaseKey(noteNumber);
-                            }
+                            PianoActorRef->HandleMidiEventWithSource(noteNumber, isNoteOn, source);
                         }
                     }
                 }

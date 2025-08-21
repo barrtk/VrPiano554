@@ -114,6 +114,12 @@ protected:
     UFUNCTION()
     void OnButton_NextMidiClicked(); // New Next Midi button handler
 
+    UFUNCTION()
+    void OnButton_ToggleFileAnimationMuteClicked();
+
+    UFUNCTION()
+    void HandleFileAnimationMuteStateChanged(bool bNewState);
+
     // Handlers for PianoActor state changes
     UFUNCTION()
     void HandlePauseStateChanged(bool bNewPauseState);

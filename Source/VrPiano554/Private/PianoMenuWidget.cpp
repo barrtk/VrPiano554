@@ -131,7 +131,7 @@ void UPianoMenuWidget::NativeConstruct()
     if (Button_13) Button_13->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MidiSzybciejClicked);
     if (Button_14) Button_14->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MuteFileClicked);
     if (Button_15) Button_15->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_MuteLiveClicked);
-    if (Button_16) Button_16->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_ToggleLoopClicked);
+    if (Button_16) Button_16->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_ToggleFileAnimationMuteClicked);
     if (Button_20) Button_20->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_PrevMidiClicked);
     if (Button_21) Button_21->OnClicked.AddDynamic(this, &UPianoMenuWidget::OnButton_NextMidiClicked);
 
@@ -166,6 +166,7 @@ void UPianoMenuWidget::NativeConstruct()
         PianoActor->OnLearningModeStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLearningModeStateChanged);
         PianoActor->OnFileMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleFileMuteStateChanged);
         PianoActor->OnLiveMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleLiveMuteStateChanged);
+        PianoActor->OnFileAnimationMuteStateChanged.AddDynamic(this, &UPianoMenuWidget::HandleFileAnimationMuteStateChanged);
 
         // If the file is not muted by default in the actor, but we want it to be,
         // toggle the state so that the actor's state becomes true.
@@ -181,6 +182,7 @@ void UPianoMenuWidget::NativeConstruct()
         UpdateButtonState(TEXT("mute_file"), PianoActor->bIsFileMuted);
         UpdateButtonState(TEXT("mute_live"), PianoActor->bIsLiveMuted);
         UpdateButtonState(TEXT("toggle_loop"), false); // Assume loop is initially off
+        UpdateButtonState(TEXT("toggle_file_animation_mute"), PianoActor->bIsFileAnimationMuted);
         // Initialize tempo text
         HandleMidiTempoChanged(100);
     }
@@ -261,6 +263,7 @@ void UPianoMenuWidget::UpdateButtonState(const FString& ButtonName, bool bIsActi
     else if (ButtonName == TEXT("mute_file")) TargetButton = Button_14;
     else if (ButtonName == TEXT("mute_live")) TargetButton = Button_15;
     else if (ButtonName == TEXT("toggle_loop")) TargetButton = Button_16;
+    else if (ButtonName == TEXT("toggle_file_animation_mute")) TargetButton = Button_16;
 
     if (TargetButton)
     {
@@ -426,6 +429,19 @@ void UPianoMenuWidget::OnButton_ToggleLoopClicked()
     {
         UE_LOG(LogTemp, Error, TEXT("PianoMenuWidget: PianoActor is null when trying to toggle loop!"));
     }
+}
+
+void UPianoMenuWidget::OnButton_ToggleFileAnimationMuteClicked()
+{
+    if (PianoActor)
+    {
+        PianoActor->ToggleFileAnimationMute();
+    }
+}
+
+void UPianoMenuWidget::HandleFileAnimationMuteStateChanged(bool bNewState)
+{
+    UpdateButtonState(TEXT("toggle_file_animation_mute"), bNewState);
 }
 
 void UPianoMenuWidget::OnButton_PrevMidiClicked()

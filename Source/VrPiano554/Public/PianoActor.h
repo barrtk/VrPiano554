@@ -26,6 +26,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLearningModeStateChanged, bool, b
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileMuteStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeHoldStateChanged, bool, bNewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileAnimationMuteStateChanged, bool, bNewState);
+
 
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
@@ -48,6 +50,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "MIDI")
     void HandleMidiNote(int32 Note, bool bIsNoteOn);
+    
+    UFUNCTION(BlueprintCallable, Category = "MIDI")
+    void HandleMidiEventWithSource(int32 Note, bool bIsNoteOn, const FString& Source);
 
     UFUNCTION(BlueprintCallable, Category = "Piano|MIDI")
     void PrevMidi();
@@ -113,6 +118,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Piano|Game")
     void StartRestart();
+
+	UFUNCTION(BlueprintCallable, Category = "Piano")
+    void ToggleFileAnimationMute();
     //~ End Menu Functions
 
 protected:
@@ -166,6 +174,12 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Menu")
     FOnLifeHoldStateChanged OnLifeHoldStateChanged;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Piano")
+    bool bIsFileAnimationMuted = false;
+
+    UPROPERTY(BlueprintAssignable, Category = "Piano")
+    FOnFileAnimationMuteStateChanged OnFileAnimationMuteStateChanged;
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)

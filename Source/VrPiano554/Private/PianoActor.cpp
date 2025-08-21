@@ -380,6 +380,23 @@ void APianoActor::HandleMidiNote(int32 Note, bool bIsNoteOn)
     }
 }
 
+void APianoActor::HandleMidiEventWithSource(int32 Note, bool bIsNoteOn, const FString& Source)
+{
+    if (Source.Equals(TEXT("file"), ESearchCase::IgnoreCase) && bIsFileAnimationMuted)
+    {
+        return; // Zignoruj zdarzenie, jeśli animacje z pliku są wyciszone
+    }
+
+    if (bIsNoteOn)
+    {
+        PressKey(Note);
+    }
+    else
+    {
+        ReleaseKey(Note);
+    }
+}
+
 void APianoActor::HighlightKeys(const TArray<int32>& NotesToHighlight)
 {
     if (!HighlightedKeyMaterial)
@@ -499,7 +516,7 @@ void APianoActor::SendUDPCommand(const FString& Command)
         return;
     }
 
-    FString JsonString = FString::Printf(TEXT("{\"command\": \"%s\"}"), *Command);
+    FString JsonString = FString::Printf(TEXT("{\"command\":\"%s\"}"), *Command);
     TArray<uint8> Data;
     Data.Append((uint8*)TCHAR_TO_UTF8(*JsonString), JsonString.Len());
 
@@ -602,6 +619,21 @@ void APianoActor::StartRestart()
     if (PianoMenuWidgetInstance)
     {
         PianoMenuWidgetInstance->UpdateMidiText(TEXT("MIDI: Restarting..."));
+    }
+}
+
+void APianoActor::ToggleFileAnimationMute()
+{
+    bIsFileAnimationMuted = !bIsFileAnimationMuted;
+    OnFileAnimationMuteStateChanged.Broadcast(bIsFileAnimationMuted);
+
+    // Jeśli animacje zostały właśnie wyłączone, zresetuj pozycję wszystkich klawiszy
+    if (bIsFileAnimationMuted)
+    {
+        for (int32 Note = 36; Note <= 96; ++Note)
+        {
+            ReleaseKey(Note); // Użyj istniejącej funkcji, by przywrócić pozycję domyślną
+        }
     }
 }
 
