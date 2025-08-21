@@ -137,7 +137,7 @@ void UPianoMenuWidget::NativeConstruct()
 
     // Bind TextBlocks
     if (aktualneMidi) aktualneMidi->SetText(FText::FromString(TEXT("MIDI: Loading...")));
-    if (TextBlock_25) TextBlock_25->SetText(FText::FromString(TEXT("Pos: Not Saved")));
+    
     if (midiTempo) midiTempo->SetText(FText::FromString(TEXT("Tempo: 100")));
 
     // Create UDP socket for receiving
@@ -241,18 +241,7 @@ void UPianoMenuWidget::ReceiveUDPData(const FString& Message)
                     int32 NewTempo = JsonObject->GetIntegerField(TEXT("tempo"));
                     HandleMidiTempoChanged(NewTempo);
                 }
-                else if (Command == TEXT("update_position_info"))
-                {
-                    TSharedPtr<FJsonObject> PosObject = JsonObject->GetObjectField(TEXT("position"));
-                    if (PosObject.IsValid())
-                    {
-                        FVector Position;
-                        Position.X = PosObject->GetNumberField(TEXT("X"));
-                        Position.Y = PosObject->GetNumberField(TEXT("Y"));
-                        Position.Z = PosObject->GetNumberField(TEXT("Z"));
-                        UpdatePositionText(Position);
-                    }
-                }
+                
             }
         }
     }
@@ -298,14 +287,7 @@ void UPianoMenuWidget::UpdateButtonState(const FString& ButtonName, bool bIsActi
     }
 }
 
-void UPianoMenuWidget::UpdatePositionText(const FVector& Position)
-{
-    if (TextBlock_25)
-    {
-        FString PosString = FString::Printf(TEXT("Pos: X=%.1f Y=%.1f Z=%.1f"), Position.X, Position.Y, Position.Z);
-        TextBlock_25->SetText(FText::FromString(PosString));
-    }
-}
+
 
 void UPianoMenuWidget::UpdateMidiText(const FString& MidiInfo)
 {

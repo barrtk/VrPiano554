@@ -469,7 +469,7 @@ void APianoActor::SavePosition()
         UGameplayStatics::SaveGameToSlot(SaveGameInstance, SaveGameInstance->SaveSlotName, SaveGameInstance->UserIndex);
         if (PianoMenuWidgetInstance)
         {
-            PianoMenuWidgetInstance->UpdatePositionText(GetActorLocation());
+            
         }
     }
 }
@@ -481,7 +481,7 @@ void APianoActor::LoadPosition()
         SetActorTransform(LoadedGame->PianoTransform);
         if (PianoMenuWidgetInstance)
         {
-            PianoMenuWidgetInstance->UpdatePositionText(GetActorLocation());
+            
         }
     }
 }
@@ -524,6 +524,15 @@ void APianoActor::ToggleLearningMode()
 {
     bIsLearningMode = !bIsLearningMode;
     OnLearningModeStateChanged.Broadcast(bIsLearningMode);
+
+    if (!bIsLearningMode) // If exiting learning mode
+    {
+        // Unhighlight all currently highlighted keys
+        TArray<int32> KeysToUnhighlight;
+        OriginalKeyMaterials.GetKeys(KeysToUnhighlight);
+        UnhighlightKeys(KeysToUnhighlight);
+    }
+
     SendUDPCommand(TEXT("tryb_nauki"));
 }
 

@@ -63,8 +63,7 @@ public:
     // Properties for text blocks used in NativeConstruct
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
     class UTextBlock* aktualneMidi;
-    UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
-    class UTextBlock* TextBlock_25;
+    
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
     class UTextBlock* midiTempo;
 
@@ -134,7 +133,7 @@ public: // Moved to public section for external access
     UFUNCTION(BlueprintCallable, Category = "UDP")
     void ReceiveUDPData(const FString& Data);
 
-    void UpdatePositionText(const FVector& Position);
+    
     void UpdateMidiText(const FString& MidiMessage);
     // Corrected signature for UpdateButtonState
     void UpdateButtonState(const FString& ButtonName, bool bIsActive);
