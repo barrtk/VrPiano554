@@ -7,6 +7,27 @@
 
 class AFallingBlock;
 class FUdpSocketReceiver;
+class APianoActor; // Forward declaration
+class AVrPianoPawn; // Forward declaration
+
+// Struct to hold block spawn information (time and MIDI note)
+struct FBlockSpawnInfo
+{
+    float Time;
+    int32 MidiNote;
+
+    // Default constructor
+    FBlockSpawnInfo() : Time(0.0f), MidiNote(0) {}
+
+    // Constructor with parameters
+    FBlockSpawnInfo(float InTime, int32 InMidiNote) : Time(InTime), MidiNote(InMidiNote) {}
+
+    // Comparison operator for sorting
+    bool operator<(const FBlockSpawnInfo& Other) const
+    {
+        return Time < Other.Time;
+    }
+};
 
 UCLASS()
 class VRPIANO554_API AFallingBlockManager : public AActor
@@ -46,8 +67,11 @@ private:
     FUdpSocketReceiver* UDPReceiver;
 
     FCriticalSection ArrivalTimesMutex;
-    TArray<float> ArrivalTimes;
+    TArray<FBlockSpawnInfo> ArrivalTimes; // Changed from TArray<float>
 
     void StartUDPListener();
     void OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint);
+
+    APianoActor* PianoActorRef;
+    AVrPianoPawn* VrPianoPawnRef;
 };

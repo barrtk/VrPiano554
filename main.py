@@ -109,6 +109,9 @@ ui_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 UDP_PORT_NOTE = 5005
 note_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+UDP_PORT_FALLING_BLOCKS = 5008 # NEW: Port for falling block data
+falling_block_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # NEW: Socket for falling block data
+
 UDP_IP_RECEIVE = "127.0.0.1"
 UDP_PORT_RECEIVE = 5006
 receive_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -166,18 +169,18 @@ def send_midi_message(msg_type, note, velocity=None, duration=None, source="live
         if muted_all:
             return
 
-    message = {"type": msg_type, "note": int(note), "source": source}
-    if velocity is not None:
-        message["velocity"] = int(velocity)
-    if duration is not None:
-        try:
-            adj_duration = float(duration) / speed_factor if source == "file" else float(duration)
-            message["duration"] = adj_duration
-        except Exception:
-            pass
-    send_note_event(message)
-    if (source == "live" and log_live) or (source == "file" and log_parser):
-        print(f"Sent: {json.dumps(message)}")
+        message = {"type": msg_type, "note": int(note), "source": source}
+        if velocity is not None:
+            message["velocity"] = int(velocity)
+        if duration is not None:
+            try:
+                adj_duration = float(duration) / speed_factor if source == "file" else float(duration)
+                message["duration"] = adj_duration
+            except Exception:
+                pass
+        send_note_event(message)
+        if (source == "live" and log_live) or (source == "file" and log_parser):
+            print(f"Sent: {json.dumps(message)}")
 
 def play_sound(note, source="live"):
     global muted_all, muted_live, volume
@@ -251,6 +254,17 @@ def play_midi_file_prettymidi(file_path):
                     time.sleep(to_sleep)
             
             last_start_time = note.start
+
+            # NEW: Send falling block data to Unreal
+            try:
+                falling_block_data = {
+                    "time": note.start, # Use note.start as the time for the block
+                    "midi_note": note.pitch
+                }
+                json_falling_block = json.dumps(falling_block_data)
+                falling_block_sock.sendto(json_falling_block.encode('utf-8'), (UDP_IP_SEND, UDP_PORT_FALLING_BLOCKS))
+            except Exception as e:
+                print(f"ERROR sending falling block data: {e}")
 
             if wait_for_key_mode:
                 with state_lock:
@@ -357,7 +371,7 @@ def live_midi_thread(preferred_port_substr="Arturia"):
     for i, port in enumerate(input_ports):
         print(f"  {i}: {port}")
 
-    selected_port = next((p for p in input_ports if preferred_port_substr in p and "MIDIOUT2" not in p), None)
+    selected_port = next((p for p p in input_ports if preferred_port_substr in p and "MIDIOUT2" not in p), None)
     if not selected_port:
         selected_port = input_ports[0]
     print(f"[LiveMIDI] Using MIDI port: {selected_port}")
@@ -466,16 +480,23 @@ def udp_receiver_thread():
             elif command == "pauza":
                 with state_lock:
                     is_paused = not is_paused
-                print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
+                print(f"Pauza {"włączona" if is_paused else "wyłączona"}.")
             elif command == "tryb_nauki":
                 with state_lock:
+                    old_wait_for_key_mode = wait_for_key_mode # Store old state
                     wait_for_key_mode = not wait_for_key_mode
                     key_pressed_event.set()
-                print(f"Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
+                print(f"Tryb nauki {"WŁĄCZONY" if wait_for_key_mode else "WYŁĄCZONY"}")
+
+                # NEW: If exiting learning mode, stop all active sounds
+                if not wait_for_key_mode and old_wait_for_key_mode: # Check if transitioning from True to False
+                    print("Exiting learning mode: Stopping all active sounds.")
+                    for note in list(active_channels.keys()): # Iterate over a copy of keys
+                        stop_sound(note, source="file", force=True) # Force stop to ensure fadeout
             elif command == "life_hold":
                 with state_lock:
                     live_hold_mode = not live_hold_mode
-                print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
+                print(f"LIVE hold {"włączone" if live_hold_mode else "wyłączone"}.")
             elif command == "midi_wolniej":
                 with state_lock:
                     speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
@@ -489,11 +510,11 @@ def udp_receiver_thread():
             elif command == "mute_file":
                 with state_lock:
                     muted_parser = not muted_parser
-                print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
+                print(f"Plik MIDI {"wyciszony" if muted_parser else "odtwarzany"}.")
             elif command == "mute_live":
                 with state_lock:
                     muted_live = not muted_live
-                print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
+                print(f"Live MIDI {"wyciszone" if muted_live else "odtwarzane"}.")
             elif command == "unmute_all":
                 with state_lock:
                     muted_all = False
@@ -504,7 +525,7 @@ def udp_receiver_thread():
                 with state_lock:
                     loop_midi = not loop_midi
                 send_ui_update({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
-                print(f"Looping MIDI {'włączone' if loop_midi else 'wyłączone'}.")
+                print(f"Looping MIDI {"włączone" if loop_midi else "wyłączone"}.")
             elif command == "toggle_file_animation_mute":
                 # This command is handled by Unreal, but we can log it here
                 print("Received toggle_file_animation_mute command from Unreal.")
@@ -564,15 +585,15 @@ def main_loop():
             with state_lock:
                 wait_for_key_mode = not wait_for_key_mode
                 key_pressed_event.set()
-            print(f"\033[96m[PRACTICE] Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
+            print(f"\033[96m[PRACTICE] Tryb nauki {"WŁĄCZONY" if wait_for_key_mode else "WYŁĄCZONY"}")
         elif cmd == "f":
             with state_lock:
                 muted_parser = not muted_parser
-            print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
+            print(f"Plik MIDI {"wyciszony" if muted_parser else "odtwarzany"}.")
         elif cmd == "v":
             with state_lock:
                 muted_live = not muted_live
-            print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
+            print(f"Live MIDI {"wyciszone" if muted_live else "odtwarzane"}.")
         elif cmd == "m":
             with state_lock:
                 muted_all = not muted_all
@@ -585,11 +606,11 @@ def main_loop():
         elif cmd == "p":
             with state_lock:
                 is_paused = not is_paused
-            print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
+            print(f"Pauza {"włączona" if is_paused else "wyłączona"}.")
         elif cmd == "h":
             with state_lock:
                 live_hold_mode = not live_hold_mode
-            print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
+            print(f"LIVE hold {"włączone" if live_hold_mode else "wyłączone"}.")
         elif cmd == ".":
             with state_lock:
                 speed_factor = round(min(speed_factor + 0.05, 4.0), 2)

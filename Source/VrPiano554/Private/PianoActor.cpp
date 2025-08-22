@@ -641,3 +641,31 @@ void APianoActor::LoadMidiFile()
 {
     // Implement MIDI file loading logic if needed
 }
+
+bool APianoActor::GetKeyTransformAndWidth(int32 MidiNote, FTransform& OutTransform, float& OutWidth)
+{
+    if (USceneComponent** PivotPtr = KeyPivotMap.Find(MidiNote))
+    {
+        if (USceneComponent* Pivot = *PivotPtr)
+        {
+            OutTransform = Pivot->GetComponentTransform();
+
+            // Calculate width from the attached mesh component
+            if (UStaticMeshComponent** KeyMeshPtr = KeyMeshComponents.Find(MidiNote))
+            {
+                if (UStaticMeshComponent* KeyMesh = *KeyMeshPtr)
+                {
+                    // Get the local bounds of the mesh
+                    FBoxSphereBounds LocalBounds = KeyMesh->GetStaticMesh()->GetBounds();
+                    // The width is typically along the Y-axis in a standard piano key mesh
+                    // Assuming the mesh is oriented such that its Y-axis represents width
+                    OutWidth = LocalBounds.BoxExtent.Y * 2.0f * KeyMesh->GetComponentScale().Y;
+                    return true;
+                }
+            }
+        }
+    }
+    OutTransform = FTransform::Identity;
+    OutWidth = 0.0f;
+    return false;
+}

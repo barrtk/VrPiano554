@@ -123,6 +123,16 @@ public:
     void ToggleFileAnimationMute();
     //~ End Menu Functions
 
+    /**
+     * Retrieves the world transform and width of a specific piano key.
+     * @param MidiNote The MIDI note number of the key (e.g., 60 for Middle C).
+     * @param OutTransform The world transform (location, rotation, scale) of the key's pivot.
+     * @param OutWidth The width of the key in Unreal units.
+     * @return True if the key was found, false otherwise.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Piano|Keys")
+    bool GetKeyTransformAndWidth(int32 MidiNote, FTransform& OutTransform, float& OutWidth);
+
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Added for socket cleanup

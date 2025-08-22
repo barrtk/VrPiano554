@@ -24,19 +24,22 @@ void AFallingBlock::BeginPlay()
 		const FVector MeshSize = BlockMesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0f;
 
 		// Avoid division by zero if the mesh is somehow sizeless
-		if (MeshSize.Y <= 0.0f)
+		if (MeshSize.Y <= 0.0f || MeshSize.X <= 0.0f) // Also check X for width scaling
 		{
-			UE_LOG(LogTemp, Warning, TEXT("AFallingBlock: StaticMesh Y-axis size is zero, cannot scale properly."));
+			UE_LOG(LogTemp, Warning, TEXT("AFallingBlock: StaticMesh X or Y-axis size is zero, cannot scale properly."));
 			return;
 		}
 
 		// 2. Calculate the desired length of the block based on duration and speed.
 		const float DesiredLength = FMath::Max(FallSpeed * NoteDuration, 1.0f); // Ensure a minimum length
 
-		// 3. Calculate the new scale. We only modify the Y-axis.
+		// 3. Calculate the new scale. We modify X (width) and Y (length).
 		FVector CurrentScale = GetActorScale3D();
-		// We divide by MeshSize.Y to make the scaling independent of the original mesh's length.
-		FVector NewScale = FVector(CurrentScale.X, (DesiredLength / MeshSize.Y), CurrentScale.Z);
+		FVector NewScale = FVector(
+            TargetKeyWidth / MeshSize.X, // Scale X to match key width
+            DesiredLength / MeshSize.Y,  // Scale Y for length
+            CurrentScale.Z               // Keep Z scale as is (height of block)
+        );
 
 		// 4. Apply the new scale.
 		SetActorScale3D(NewScale);
@@ -58,15 +61,16 @@ void AFallingBlock::Tick(float DeltaTime)
 	}
 }
 
-void AFallingBlock::InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight)
+void AFallingBlock::InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth)
 {
 	NoteDuration = InNoteDuration;
 	FallSpeed = InFallSpeed;
 	StartHeight = InStartHeight;
 	TargetZHeight = InTargetZHeight; // Assign the new parameter
+    TargetKeyTransform = InTargetKeyTransform;
+    TargetKeyWidth = InTargetKeyWidth;
 
-	// Set the initial location
-	FVector Location = GetActorLocation();
-	Location.Z = StartHeight;
-	SetActorLocation(Location);
+	// Set the initial location and rotation based on the key transform
+	SetActorLocation(TargetKeyTransform.GetLocation() + FVector(0,0,StartHeight)); // Spawn above the key
+    SetActorRotation(TargetKeyTransform.GetRotation()); // Inherit key's rotation
 }

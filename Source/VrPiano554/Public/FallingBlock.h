@@ -19,7 +19,7 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     /** Initializes the block, setting its duration, speed, start position, and target Z height. */
-    void InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight);
+    void InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth);
 
     // --- Właściwości widoczne w edytorze do łatwiejszego debugowania ---
 
@@ -35,6 +35,12 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
     float FallSpeed = 200.f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
+    FTransform TargetKeyTransform;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
+    float TargetKeyWidth;
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
