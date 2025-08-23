@@ -138,6 +138,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Piano|Keys")
     void PlayNote(int32 MidiNote, float Duration);
 
+    UFUNCTION(BlueprintCallable, Category = "Piano")
+    void BroadcastKeysInitialized();
+
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Added for socket cleanup
@@ -277,5 +280,6 @@ private:
     FSocket* SenderSocket; // Added
     void SendUDPCommand(const FString& Command); // Added
 
+public: // Moved from private
     static FString GetNoteName(int32 MidiNote);
 };

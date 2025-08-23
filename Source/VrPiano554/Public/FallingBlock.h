@@ -21,10 +21,13 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     /** Initializes the block, setting its duration, speed, start position, and target Z height. */
-    void InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor);
+    void InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName);
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
     int32 SequenceNumber;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
+    FString NoteName;
 
     void UpdateBlockScale();
 

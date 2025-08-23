@@ -707,3 +707,21 @@ void APianoActor::LoadMidiFile()
         OutWidth = 0.0f;
         return false;
     }
+
+void APianoActor::BroadcastKeysInitialized()
+{
+    OnKeysInitialized.Broadcast();
+}
+
+FString APianoActor::GetNoteName(int32 MidiNote)
+{
+    static const FString NoteNames[] = {
+        TEXT("C"), TEXT("C#"), TEXT("D"), TEXT("D#"), TEXT("E"), TEXT("F"),
+        TEXT("F#"), TEXT("G"), TEXT("G#"), TEXT("A"), TEXT("A#"), TEXT("B")
+    };
+
+    int32 NoteIndex = MidiNote % 12;
+    int32 Octave = (MidiNote / 12) - 1; // MIDI note 0 is C-1
+
+    return FString::Printf(TEXT("%s%d"), *NoteNames[NoteIndex], Octave);
+}

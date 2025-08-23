@@ -74,7 +74,7 @@ void AFallingBlock::Tick(float DeltaTime)
 	}
 }
 
-void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor)
+void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName)
 {
     MidiNote = InMidiNote;
     SequenceNumber = InSequenceNumber;
@@ -85,9 +85,12 @@ void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float In
     TargetKeyTransform = InTargetKeyTransform;
     TargetKeyWidth = InTargetKeyWidth;
     PianoActorRef = InPianoActor;
+    NoteName = InNoteName; // Set the new property
 
+#if WITH_EDITOR
     // Set the actor's label for debugging
-    SetActorLabel(FString::Printf(TEXT("Block_M%d_S%d"), MidiNote, SequenceNumber));
+    SetActorLabel(FString::Printf(TEXT("Block_%d_%s"), SequenceNumber, *InNoteName));
+#endif
 
 	SetActorLocation(TargetKeyTransform.GetLocation() + FVector(0,0,StartHeight));
     SetActorRotation(TargetKeyTransform.GetRotation());
