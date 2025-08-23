@@ -1,4 +1,4 @@
-﻿#include "FallingBlockManager.h"
+#include "FallingBlockManager.h"
 #include "FallingBlock.h"
 #include "Engine/World.h"
 #include "Sockets.h"
@@ -75,8 +75,11 @@ void AFallingBlockManager::BeginPlay()
     {
         PianoActorRef = Cast<APianoActor>(FoundActors[0]);
         UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Found PianoActor."));
-        // Populate key data once we have the piano actor
-        PopulateKeyData();
+        // Bind to PianoActor's OnKeysInitialized event
+        if (PianoActorRef)
+        {
+            PianoActorRef->OnKeysInitialized.AddDynamic(this, &AFallingBlockManager::OnPianoKeysInitialized);
+        }
     }
     else
     {
@@ -119,7 +122,7 @@ void AFallingBlockManager::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!BlockClass) return;
+    if (!BlockClass || FallSpeed <= 0.0f) return;
 
     // --- Pause Logic ---
     bool bIsNowPaused = (PianoActorRef && PianoActorRef->bIsPaused);
@@ -149,57 +152,61 @@ void AFallingBlockManager::Tick(float DeltaTime)
 
     if (bIsCurrentlyPaused)
     {
-        return; // Do not spawn or move blocks if paused
+        return; // Do not advance time or spawn blocks if paused
     }
 
     // --- Time and Spawning Logic ---
     CurrentSongTime += DeltaTime;
 
-    ArrivalTimesMutex.Lock();
-    ArrivalTimes.Sort();
-    while (NextBlockIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextBlockIndex].Time)
+    // Only process one block per tick to simplify logic and avoid race conditions
+    if (NextBlockIndex < ArrivalTimes.Num())
     {
+        const float FallTime = (StartHeight - TargetZHeight) / FallSpeed;
         const FBlockSpawnInfo& CurrentNoteInfo = ArrivalTimes[NextBlockIndex];
-        int32 MidiNote = CurrentNoteInfo.MidiNote;
+        const float NotePlayTime = CurrentNoteInfo.Time;
+        const float BlockSpawnTime = NotePlayTime - FallTime;
 
-        const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
-        const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
-
-        if (KeyTransformPtr && KeyWidthPtr)
+        if (CurrentSongTime >= BlockSpawnTime)
         {
-            const FTransform& KeyTransform = *KeyTransformPtr;
-            const float KeyWidth = *KeyWidthPtr;
+            UE_LOG(LogTemp, Log, TEXT("Tick: Spawning block for MidiNote: %d, BlockSpawnTime: %f"), CurrentNoteInfo.MidiNote, BlockSpawnTime);
+            int32 MidiNote = CurrentNoteInfo.MidiNote;
 
-            FRotator BlockRotation = FRotator::ZeroRotator;
-            if (VrPianoPawnRef && VrPianoPawnRef->CameraComponent)
-            {
-                FVector PlayerLocation = VrPianoPawnRef->CameraComponent->GetComponentLocation();
-                FVector BlockLocation = KeyTransform.GetLocation();
-                FVector DirectionToPlayer = (PlayerLocation - BlockLocation).GetSafeNormal();
-                BlockRotation = DirectionToPlayer.Rotation();
-            }
+            const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
+            const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
 
-            AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, KeyTransform.GetLocation(), BlockRotation);
-            if (NewBlock)
+            if (KeyTransformPtr && KeyWidthPtr)
             {
-                NewBlock->InitBlock(CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth);
+                const FTransform& KeyTransform = *KeyTransformPtr;
+                const float KeyWidth = *KeyWidthPtr;
+
+                FRotator BlockRotation = FRotator::ZeroRotator;
+                if (VrPianoPawnRef && VrPianoPawnRef->CameraComponent)
+                {
+                    FVector PlayerLocation = VrPianoPawnRef->CameraComponent->GetComponentLocation();
+                    FVector BlockLocation = KeyTransform.GetLocation();
+                    FVector DirectionToPlayer = (PlayerLocation - BlockLocation).GetSafeNormal();
+                    BlockRotation = DirectionToPlayer.Rotation();
+                }
+
+                AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, KeyTransform.GetLocation(), BlockRotation);
+                if (NewBlock)
+                {
+                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef);
+                }
             }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Block will not be spawned."), MidiNote);
+            }
+            NextBlockIndex++;
         }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Spawning at default location."), MidiNote);
-            FVector SpawnLocation = GetActorLocation();
-            SpawnLocation.Z = StartHeight;
-            AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, FRotator::ZeroRotator);
-            if (NewBlock)
-            {
-                NewBlock->InitBlock(CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, FTransform::Identity, 10.0f);
-            }
-        }
-
-        NextBlockIndex++;
     }
-    ArrivalTimesMutex.Unlock();
+}
+
+void AFallingBlockManager::OnPianoKeysInitialized()
+{
+    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received OnPianoKeysInitialized event. Populating key data."));
+    PopulateKeyData();
 }
 
 void AFallingBlockManager::SetSongTime(float Time)
@@ -245,12 +252,11 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
     {
         double Time = 0.0;
         int32 MidiNote = 0;
-        double Duration = 0.5; // Default duration if not provided
+        double Duration = 0.5; // Default duration
 
         if (JsonObject->TryGetNumberField(TEXT("time"), Time) && 
             JsonObject->TryGetNumberField(TEXT("midi_note"), MidiNote))
         {
-            // Duration is optional
             JsonObject->TryGetNumberField(TEXT("duration"), Duration);
 
             if (Time > 0)

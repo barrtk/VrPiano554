@@ -94,8 +94,12 @@ private:
     void PopulateKeyData();
     void SetMidiData(const TArray<FBlockSpawnInfo>& NewArrivalTimes);
 
+    UFUNCTION()
+    void OnPianoKeysInitialized();
+
     TMap<int32, FTransform> KeyTransforms;
     TMap<int32, float> KeyWidths;
 
     bool bIsCurrentlyPaused;
+    bool bHasPopulatedKeyData;
 };

@@ -28,6 +28,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLifeHoldStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileAnimationMuteStateChanged, bool, bNewState);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnKeysInitialized);
+
 
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
@@ -133,6 +135,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Piano|Keys")
     bool GetKeyTransformAndWidth(int32 MidiNote, FTransform& OutTransform, float& OutWidth);
 
+    UFUNCTION(BlueprintCallable, Category = "Piano|Keys")
+    void PlayNote(int32 MidiNote, float Duration);
+
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Added for socket cleanup
@@ -190,6 +195,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Piano")
     FOnFileAnimationMuteStateChanged OnFileAnimationMuteStateChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "Piano")
+    FOnKeysInitialized OnKeysInitialized;
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)
@@ -268,4 +276,6 @@ private:
     // UDP Socket for sending commands
     FSocket* SenderSocket; // Added
     void SendUDPCommand(const FString& Command); // Added
+
+    static FString GetNoteName(int32 MidiNote);
 };

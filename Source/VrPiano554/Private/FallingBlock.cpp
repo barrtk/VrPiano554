@@ -1,6 +1,7 @@
 #include "FallingBlock.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "PianoActor.h"
 
 AFallingBlock::AFallingBlock()
 {
@@ -9,7 +10,12 @@ AFallingBlock::AFallingBlock()
 	BlockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockMesh"));
 	RootComponent = BlockMesh;
 
-	// The mesh should be assigned via the DefaultBlockMesh UPROPERTY in Blueprint or editor.
+    // Enable collision and overlap events
+    BlockMesh->SetGenerateOverlapEvents(true);
+    BlockMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+    BlockMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
+    BlockMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
 	bIsPaused = false;
 }
 
@@ -17,6 +23,9 @@ void AFallingBlock::BeginPlay()
 {
 	Super::BeginPlay();
 	SpawnTime = GetWorld()->GetTimeSeconds();
+
+    // Register the overlap event
+    BlockMesh->OnComponentBeginOverlap.AddDynamic(this, &AFallingBlock::OnBlockOverlapBegin);
 }
 
 void AFallingBlock::UpdateBlockScale()
@@ -24,27 +33,23 @@ void AFallingBlock::UpdateBlockScale()
 	// --- Robust Scaling Logic ---
 	if (BlockMesh && BlockMesh->GetStaticMesh())
 	{
-		// 1. Get the original size of the mesh from the StaticMesh asset itself.
 		const FVector MeshSize = BlockMesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0f;
 
-		// Avoid division by zero if the mesh is somehow sizeless
 		if (MeshSize.Y <= 0.0f || MeshSize.X <= 0.0f || MeshSize.Z <= 0.0f)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("AFallingBlock: StaticMesh has a zero dimension, cannot scale properly."));
 			return;
 		}
 
-		// 2. Calculate the desired length of the block based on duration and speed.
-		const float DesiredLength = FMath::Max(FallSpeed * NoteDuration, 1.0f); // Ensure a minimum length
+		const float DesiredLength = FMath::Max(FallSpeed * NoteDuration, 1.0f);
 
-		// 3. Calculate the new scale.
+        // X = Width, Y = Depth, Z = Height/Length
 		FVector NewScale = FVector(
-            (TargetKeyWidth / MeshSize.X) * WidthScaleMultiplier, // X = Width
-            DepthScale / MeshSize.Y,                              // Y = Depth
-            (DesiredLength / MeshSize.Z) * LengthScaleMultiplier      // Z = Height/Length
+            (TargetKeyWidth / MeshSize.X) * WidthScaleMultiplier,
+            DepthScale / MeshSize.Y,
+            (DesiredLength / MeshSize.Z) * LengthScaleMultiplier
         );
 
-		// 4. Apply the new scale.
 		SetActorScale3D(NewScale);
 	}
 }
@@ -62,34 +67,55 @@ void AFallingBlock::Tick(float DeltaTime)
 	Location.Z -= FallSpeed * DeltaTime;
 	SetActorLocation(Location);
 
-	// Usuwamy klocek, jeśli jest poniżej TargetZHeight (z małym marginesem)
-	if (Location.Z < TargetZHeight - 5.0f)
+	// Destroy the block if it falls far below the target
+	if (Location.Z < TargetZHeight - 100.0f)
 	{
 		Destroy();
 	}
 }
 
-void AFallingBlock::InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth)
+void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor)
 {
+    MidiNote = InMidiNote;
+    SequenceNumber = InSequenceNumber;
 	NoteDuration = InNoteDuration;
 	FallSpeed = InFallSpeed;
 	StartHeight = InStartHeight;
 	TargetZHeight = InTargetZHeight;
     TargetKeyTransform = InTargetKeyTransform;
     TargetKeyWidth = InTargetKeyWidth;
+    PianoActorRef = InPianoActor;
 
-	// Set the initial location and rotation based on the key transform
-	SetActorLocation(TargetKeyTransform.GetLocation() + FVector(0,0,StartHeight)); // Spawn above the key
-    SetActorRotation(TargetKeyTransform.GetRotation()); // Inherit key's rotation
+    // Set the actor's label for debugging
+    SetActorLabel(FString::Printf(TEXT("Block_M%d_S%d"), MidiNote, SequenceNumber));
 
-    // Assign the mesh from the UPROPERTY if it's valid and not already set
+	SetActorLocation(TargetKeyTransform.GetLocation() + FVector(0,0,StartHeight));
+    SetActorRotation(TargetKeyTransform.GetRotation());
+
     if (BlockMesh && DefaultBlockMesh && BlockMesh->GetStaticMesh() == nullptr)
     {
         BlockMesh->SetStaticMesh(DefaultBlockMesh);
     }
 
-    // Update the scale after all parameters are set
     UpdateBlockScale();
+}
+
+void AFallingBlock::OnBlockOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+    // Stop the block from falling further
+    FallSpeed = 0.0f;
+
+    // Check if we have a valid PianoActor reference
+    if (PianoActorRef)
+    {
+        // We could check if OtherActor is the PianoActor, but it's more robust to check if the overlapped component is a key.
+        // For now, we assume any overlap that stops the block should trigger the note.
+        PianoActorRef->PlayNote(MidiNote, NoteDuration);
+    }
+
+    // For the future learning mode, the block will wait here.
+    // For now, let's destroy it after a short delay to clean up.
+    SetLifeSpan(2.0f);
 }
 
 void AFallingBlock::PauseBlock()

@@ -141,6 +141,8 @@ void APianoActor::BeginPlay()
 
     KeyPivotMap.Empty();
 
+    UE_LOG(LogTemp, Log, TEXT("PianoActor: Starting KeyPivotMap population loop."));
+
     for (const TPair<int32, UStaticMeshComponent*>& Pair : KeyMeshComponents)
     {
         int32 MidiNote = Pair.Key;
@@ -173,11 +175,18 @@ void APianoActor::BeginPlay()
                 NewPivot->RegisterComponent();
                 KeyPivotMap.Add(MidiNote, NewPivot);
                 KeyComponent->AttachToComponent(NewPivot, FAttachmentTransformRules::KeepWorldTransform);
+                UE_LOG(LogTemp, Log, TEXT("PianoActor: Added MidiNote %d to KeyPivotMap."), MidiNote);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("PianoActor: Failed to create NewPivot for MidiNote %d."), MidiNote);
             }
         }
     }
+    UE_LOG(LogTemp, Log, TEXT("PianoActor: KeyPivotMap populated with %d entries."), KeyPivotMap.Num());
 
-    UE_LOG(LogTemp, Warning, TEXT("PianoActor: Hierarchia przebudowana w kodzie."));
+    // Broadcast event that keys are initialized
+    OnKeysInitialized.Broadcast();
 
     // Initialize UDP sender socket
     SenderSocket = FUdpSocketBuilder(TEXT("PianoActorSenderSocket"))
@@ -637,35 +646,64 @@ void APianoActor::ToggleFileAnimationMute()
     }
 }
 
+void APianoActor::PlayNote(int32 MidiNote, float Duration)
+{
+    // Immediately press the key
+    PressKey(MidiNote);
+
+    // Set a timer to release the key after the specified duration
+    FTimerHandle ReleaseTimerHandle;
+    FTimerDelegate ReleaseDelegate;
+
+    // Use a lambda to capture the MidiNote value
+    ReleaseDelegate.BindLambda([this, MidiNote]()
+    {
+        ReleaseKey(MidiNote);
+    });
+
+    GetWorldTimerManager().SetTimer(ReleaseTimerHandle, ReleaseDelegate, Duration, false);
+}
+
 void APianoActor::LoadMidiFile()
 {
     // Implement MIDI file loading logic if needed
 }
 
-bool APianoActor::GetKeyTransformAndWidth(int32 MidiNote, FTransform& OutTransform, float& OutWidth)
-{
-    if (USceneComponent** PivotPtr = KeyPivotMap.Find(MidiNote))
+    bool APianoActor::GetKeyTransformAndWidth(int32 MidiNote, FTransform& OutTransform, float& OutWidth)
     {
-        if (USceneComponent* Pivot = *PivotPtr)
+        UE_LOG(LogTemp, Log, TEXT("GetKeyTransformAndWidth: Checking MidiNote %d"), MidiNote);
+        if (USceneComponent** PivotPtr = KeyPivotMap.Find(MidiNote))
         {
-            OutTransform = Pivot->GetComponentTransform();
-
-            // Calculate width from the attached mesh component
-            if (UStaticMeshComponent** KeyMeshPtr = KeyMeshComponents.Find(MidiNote))
+            UE_LOG(LogTemp, Log, TEXT("GetKeyTransformAndWidth: Found Pivot for MidiNote %d"), MidiNote);
+            if (USceneComponent* Pivot = *PivotPtr)
             {
-                if (UStaticMeshComponent* KeyMesh = *KeyMeshPtr)
+                OutTransform = Pivot->GetComponentTransform();
+
+                // Calculate width from the attached mesh component
+                if (UStaticMeshComponent** KeyMeshPtr = KeyMeshComponents.Find(MidiNote))
                 {
-                    // Get the local bounds of the mesh
-                    FBoxSphereBounds LocalBounds = KeyMesh->GetStaticMesh()->GetBounds();
-                    // The width is typically along the Y-axis in a standard piano key mesh
-                    // Assuming the mesh is oriented such that its Y-axis represents width
-                    OutWidth = LocalBounds.BoxExtent.Y * 2.0f * KeyMesh->GetComponentScale().Y;
-                    return true;
+                    UE_LOG(LogTemp, Log, TEXT("GetKeyTransformAndWidth: Found KeyMesh for MidiNote %d"), MidiNote);
+                    if (UStaticMeshComponent* KeyMesh = *KeyMeshPtr)
+                    {
+                        // Get the local bounds of the mesh
+                        FBoxSphereBounds LocalBounds = KeyMesh->GetStaticMesh()->GetBounds();
+                        // The width is typically along the Y-axis in a standard piano key mesh
+                        // Assuming the mesh is oriented such that its Y-axis represents width
+                        OutWidth = LocalBounds.BoxExtent.Y * 2.0f * KeyMesh->GetComponentScale().Y;
+                        return true;
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("GetKeyTransformAndWidth: KeyMeshComponents.Find failed for MidiNote %d"), MidiNote);
                 }
             }
         }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("GetKeyTransformAndWidth: KeyPivotMap.Find failed for MidiNote %d"), MidiNote);
+        }
+        OutTransform = FTransform::Identity;
+        OutWidth = 0.0f;
+        return false;
     }
-    OutTransform = FTransform::Identity;
-    OutWidth = 0.0f;
-    return false;
-}
