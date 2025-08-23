@@ -192,7 +192,7 @@ void AFallingBlockManager::Tick(float DeltaTime)
                 AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, KeyTransform.GetLocation(), BlockRotation);
                 if (NewBlock)
                 {
-                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef, APianoActor::GetNoteName(MidiNote));
+                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode);
                 }
             }
             else

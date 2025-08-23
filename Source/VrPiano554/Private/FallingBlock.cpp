@@ -10,11 +10,13 @@ AFallingBlock::AFallingBlock()
 	BlockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockMesh"));
 	RootComponent = BlockMesh;
 
-    // Enable collision and overlap events
+    // Revert to original collision settings for overlap events
     BlockMesh->SetGenerateOverlapEvents(true);
     BlockMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
     BlockMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
     BlockMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    // Disable physics simulation
+    BlockMesh->SetSimulatePhysics(false);
 
 	bIsPaused = false;
 }
@@ -74,7 +76,7 @@ void AFallingBlock::Tick(float DeltaTime)
 	}
 }
 
-void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName)
+void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode)
 {
     MidiNote = InMidiNote;
     SequenceNumber = InSequenceNumber;
@@ -86,6 +88,7 @@ void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float In
     TargetKeyWidth = InTargetKeyWidth;
     PianoActorRef = InPianoActor;
     NoteName = InNoteName; // Set the new property
+    bIsLearningMode = bInIsLearningMode; // Store learning mode state
 
 #if WITH_EDITOR
     // Set the actor's label for debugging
@@ -116,9 +119,16 @@ void AFallingBlock::OnBlockOverlapBegin(UPrimitiveComponent* OverlappedComp, AAc
         PianoActorRef->PlayNote(MidiNote, NoteDuration);
     }
 
-    // For the future learning mode, the block will wait here.
-    // For now, let's destroy it after a short delay to clean up.
-    SetLifeSpan(2.0f);
+    if (!bIsLearningMode)
+    {
+        // If not in learning mode, destroy immediately
+        Destroy();
+    }
+    else
+    {
+        // If in learning mode, set a lifespan for delayed destruction
+        SetLifeSpan(2.0f);
+    }
 }
 
 void AFallingBlock::PauseBlock()
