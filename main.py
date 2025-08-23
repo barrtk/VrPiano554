@@ -75,14 +75,14 @@ def init_pygame_mixer():
     try:
         pygame.mixer.quit()
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-        pygame.mixer.set_num_channels(64)
+        pygame.mixer.set_num_channels(128) # Increased channels to prevent exhaustion
         print("INFO: pygame.mixer initialized successfully.")
     except Exception as e:
         print(f"WARNING: pygame.mixer init failed: {e}")
         try:
             pygame.mixer.quit()
             pygame.mixer.init()
-            pygame.mixer.set_num_channels(64)
+            pygame.mixer.set_num_channels(128) # Increased channels to prevent exhaustion
             print("INFO: pygame.mixer initialized with default parameters.")
         except Exception as e2:
             print(f"ERROR: pygame.mixer fallback init failed: {e2}")
@@ -193,6 +193,9 @@ def play_sound(note, source="live"):
             channel.set_volume(volume)
             channel.play(sounds[note])
             active_channels[note] = channel
+            print(f"[DEBUG] Played note {note}. Active channels: {len(active_channels)}")
+        else:
+            print(f"[WARNING] Could not play note {note}. No free channels. Active channels: {len(active_channels)}")
 
 def stop_sound(note, source="live", force=False):
     global live_hold_mode, active_channels
@@ -201,10 +204,11 @@ def stop_sound(note, source="live", force=False):
             active_channels.pop(note, None)
             return
         try:
-            active_channels[note].fadeout(1000)
+            active_channels[note].stop() # Immediately stop the sound
             active_channels.pop(note, None)
-        except (KeyError, Exception):
-            pass
+            print(f"[DEBUG] Stopped note {note}. Active channels: {len(active_channels)}")
+        except (KeyError, Exception) as e:
+            print(f"[WARNING] Error stopping sound for note {note}: {e}")
 
 def midi_to_note_name(midi_note):
     if not 21 <= midi_note <= 108:
