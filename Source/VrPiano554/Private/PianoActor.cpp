@@ -333,6 +333,8 @@ void APianoActor::ApplyCalibration()
 
     CalibrationState = ECalibrationState::Idle;
     UKismetSystemLibrary::PrintString(this, TEXT("Kalibracja zakończona!"), true, true, FLinearColor::Green, 10.f);
+
+    OnCalibrationComplete.Broadcast();
 }
 
 void APianoActor::PressKey(int32 MidiNote)

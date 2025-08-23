@@ -30,6 +30,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileAnimationMuteStateChanged, bo
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnKeysInitialized);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCalibrationComplete);
+
 
 UENUM(BlueprintType)
 enum class ECalibrationState : uint8
@@ -201,6 +203,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Piano")
     FOnKeysInitialized OnKeysInitialized;
+
+    UPROPERTY(BlueprintAssignable, Category = "Piano|Calibration")
+    FOnCalibrationComplete OnCalibrationComplete;
     //~ End Menu Properties
 
     // Widget interaction for UI pointing (attached to RightController)

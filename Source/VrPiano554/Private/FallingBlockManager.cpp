@@ -79,6 +79,7 @@ void AFallingBlockManager::BeginPlay()
         if (PianoActorRef)
         {
             PianoActorRef->OnKeysInitialized.AddDynamic(this, &AFallingBlockManager::OnPianoKeysInitialized);
+            PianoActorRef->OnCalibrationComplete.AddDynamic(this, &AFallingBlockManager::OnPianoCalibrationComplete);
         }
     }
     else
@@ -274,6 +275,12 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
     {
         UE_LOG(LogTemp, Error, TEXT("FallingBlockManager: Failed to parse UDP JSON: %s"), *JsonString);
     }
+}
+
+void AFallingBlockManager::OnPianoCalibrationComplete()
+{
+    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received OnCalibrationComplete event. Re-populating key data."));
+    PopulateKeyData();
 }
 
 void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrivalTimes)
