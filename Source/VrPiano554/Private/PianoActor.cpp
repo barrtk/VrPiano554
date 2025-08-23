@@ -524,7 +524,7 @@ void APianoActor::SendUDPCommand(const FString& Command)
     FIPv4Address::Parse(TEXT("127.0.0.1"), Addr);
     TSharedRef<FInternetAddr> InternetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
     InternetAddr->SetIp(Addr.Value);
-    InternetAddr->SetPort(5006);
+    InternetAddr->SetPort(5009);
 
     int32 BytesSent = 0;
     SenderSocket->SendTo(Data.GetData(), Data.Num(), BytesSent, *InternetAddr);

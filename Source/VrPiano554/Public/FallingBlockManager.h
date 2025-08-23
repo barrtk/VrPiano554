@@ -11,16 +11,25 @@ class APianoActor; // Forward declaration
 class AVrPianoPawn; // Forward declaration
 
 // Struct to hold block spawn information (time and MIDI note)
+USTRUCT(BlueprintType)
 struct FBlockSpawnInfo
 {
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite, Category = "Falling Block Info")
     float Time;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Falling Block Info")
     int32 MidiNote;
 
+    UPROPERTY(BlueprintReadWrite, Category = "Falling Block Info")
+    float Duration;
+
     // Default constructor
-    FBlockSpawnInfo() : Time(0.0f), MidiNote(0) {}
+    FBlockSpawnInfo() : Time(0.0f), MidiNote(0), Duration(0.0f) {}
 
     // Constructor with parameters
-    FBlockSpawnInfo(float InTime, int32 InMidiNote) : Time(InTime), MidiNote(InMidiNote) {}
+    FBlockSpawnInfo(float InTime, int32 InMidiNote, float InDuration) : Time(InTime), MidiNote(InMidiNote), Duration(InDuration) {}
 
     // Comparison operator for sorting
     bool operator<(const FBlockSpawnInfo& Other) const
@@ -45,6 +54,10 @@ protected:
 public:
     virtual void Tick(float DeltaTime) override;
 
+    UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
+    void SetSongTime(float Time);
+
+
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     TSubclassOf<AFallingBlock> BlockClass;
 
@@ -54,13 +67,16 @@ public:
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float FallSpeed = 200.f;
 
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks")
+    float TargetZHeight = 50.f;
+
     /** Port UDP do nasłuchiwania (np. 5005) */
     UPROPERTY(EditAnywhere, Category = "Networking")
     int32 ListenPort = 5008; // Changed port to 5008 to avoid conflict
 
 private:
     int32 NextBlockIndex;
-    float SongStartTime;
+    float CurrentSongTime;
 
     // UDP
     FSocket* ListenSocket;
@@ -74,4 +90,12 @@ private:
 
     APianoActor* PianoActorRef;
     AVrPianoPawn* VrPianoPawnRef;
+
+    void PopulateKeyData();
+    void SetMidiData(const TArray<FBlockSpawnInfo>& NewArrivalTimes);
+
+    TMap<int32, FTransform> KeyTransforms;
+    TMap<int32, float> KeyWidths;
+
+    bool bIsCurrentlyPaused;
 };

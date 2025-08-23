@@ -9,18 +9,16 @@ AFallingBlock::AFallingBlock()
 	BlockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockMesh"));
 	RootComponent = BlockMesh;
 
-	// The mesh should be assigned via the DefaultBlockMesh UPROPERTY in Blueprint or editor.
+	// Default values are now set in the header
 	bIsPaused = false;
+	NotePitch = 0;
 }
 
 void AFallingBlock::BeginPlay()
 {
 	Super::BeginPlay();
 	SpawnTime = GetWorld()->GetTimeSeconds();
-}
 
-void AFallingBlock::UpdateBlockScale()
-{
 	// --- Robust Scaling Logic ---
 	if (BlockMesh && BlockMesh->GetStaticMesh())
 	{
@@ -28,21 +26,19 @@ void AFallingBlock::UpdateBlockScale()
 		const FVector MeshSize = BlockMesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0f;
 
 		// Avoid division by zero if the mesh is somehow sizeless
-		if (MeshSize.Y <= 0.0f || MeshSize.X <= 0.0f || MeshSize.Z <= 0.0f)
+		if (MeshSize.Y <= 0.0f)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("AFallingBlock: StaticMesh has a zero dimension, cannot scale properly."));
+			UE_LOG(LogTemp, Warning, TEXT("AFallingBlock: StaticMesh Y-axis size is zero, cannot scale properly."));
 			return;
 		}
 
 		// 2. Calculate the desired length of the block based on duration and speed.
 		const float DesiredLength = FMath::Max(FallSpeed * NoteDuration, 1.0f); // Ensure a minimum length
 
-		// 3. Calculate the new scale.
-		FVector NewScale = FVector(
-            (TargetKeyWidth / MeshSize.X) * WidthScaleMultiplier, // X = Width
-            DepthScale / MeshSize.Y,                              // Y = Depth
-            (DesiredLength / MeshSize.Z) * LengthScaleMultiplier      // Z = Height/Length
-        );
+		// 3. Calculate the new scale. We only modify the Y-axis.
+		FVector CurrentScale = GetActorScale3D();
+		// We divide by MeshSize.Y to make the scaling independent of the original mesh's length.
+		FVector NewScale = FVector(CurrentScale.X, (DesiredLength / MeshSize.Y), CurrentScale.Z);
 
 		// 4. Apply the new scale.
 		SetActorScale3D(NewScale);
@@ -53,6 +49,7 @@ void AFallingBlock::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// If paused for practice mode, don't move
 	if (bIsPaused)
 	{
 		return;
@@ -69,27 +66,19 @@ void AFallingBlock::Tick(float DeltaTime)
 	}
 }
 
-void AFallingBlock::InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth)
+void AFallingBlock::InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, int32 InNotePitch)
 {
 	NoteDuration = InNoteDuration;
 	FallSpeed = InFallSpeed;
 	StartHeight = InStartHeight;
 	TargetZHeight = InTargetZHeight;
-    TargetKeyTransform = InTargetKeyTransform;
-    TargetKeyWidth = InTargetKeyWidth;
+	NotePitch = InNotePitch;
+	bIsPaused = false; // Ensure it's not paused on init
 
-	// Set the initial location and rotation based on the key transform
-	SetActorLocation(TargetKeyTransform.GetLocation() + FVector(0,0,StartHeight)); // Spawn above the key
-    SetActorRotation(TargetKeyTransform.GetRotation()); // Inherit key's rotation
-
-    // Assign the mesh from the UPROPERTY if it's valid and not already set
-    if (BlockMesh && DefaultBlockMesh && BlockMesh->GetStaticMesh() == nullptr)
-    {
-        BlockMesh->SetStaticMesh(DefaultBlockMesh);
-    }
-
-    // Update the scale after all parameters are set
-    UpdateBlockScale();
+	// Set the initial location
+	FVector Location = GetActorLocation();
+	Location.Z = StartHeight;
+	SetActorLocation(Location);
 }
 
 void AFallingBlock::PauseBlock()

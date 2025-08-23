@@ -21,6 +21,11 @@ public:
     /** Initializes the block, setting its duration, speed, start position, and target Z height. */
     void InitBlock(float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth);
 
+    void UpdateBlockScale();
+
+    void PauseBlock();
+    void ResumeBlock();
+
     // --- Właściwości widoczne w edytorze do łatwiejszego debugowania ---
 
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
@@ -42,9 +47,22 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
     float TargetKeyWidth;
 
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks")
+    UStaticMesh* DefaultBlockMesh; // Add this property
+
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks|Scaling")
+    float WidthScaleMultiplier = 1.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks|Scaling")
+    float LengthScaleMultiplier = 1.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks|Scaling")
+    float DepthScale = 0.1f;
+
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
     class UStaticMeshComponent* BlockMesh;
 
     float SpawnTime;
+    bool bIsPaused;
 };
