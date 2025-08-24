@@ -9,6 +9,7 @@ import json
 import time
 import threading
 import pretty_midi
+import argparse
 
 # Path to your MIDI files
 MIDI_DIR = r"C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Source\VrPiano554\midi"
@@ -141,6 +142,15 @@ key_pressed_event = threading.Event()
 
 stop_event = threading.Event()
 state_lock = threading.Lock()
+
+def send_game_command(command):
+    """Sends a command to the game's falling block manager."""
+    try:
+        print(f"[DEBUG] --> PY->UE (GameCommand): Sending to {UDP_IP_SEND}:{UDP_PORT_FALLING_BLOCKS}: {command}")
+        message_bytes = command.encode('utf-8') + b'\0'
+        falling_block_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_FALLING_BLOCKS))
+    except Exception as e:
+        print(f"ERROR sending game command: {e}")
 
 def send_ui_update(message_dict):
     """Sends a UI update message to Unreal."""
@@ -547,19 +557,20 @@ def udp_receiver_thread():
 def main_loop():
     global muted_all, muted_live, muted_parser, is_paused, volume, stop_event, was_playing, live_hold_mode, speed_factor, wait_for_key_mode
 
-    print("Komendy:\n"
-          " s - start/restart file MIDI playback\n"
-          " n - next MIDI file\n"
-          " b - previous MIDI file\n"
-          " w - toggle practice mode (wait for key press)\n"
-          " p - toggle pause\n"
-          " f - toggle mute file playback\n"
-          " v - toggle mute live MIDI\n"
-          " m - toggle mute all\n"
-          " u - unmute all\n"
-          " h - toggle LIVE hold\n"
-          " . - przyspiesz o 5%\n"
-          " , - zwolnij o 5%\n"
+    print("Komendy:\n" 
+          " s - start/restart file MIDI playback\n" 
+          " n - next MIDI file\n" 
+          " b - previous MIDI file\n" 
+          " w - toggle practice mode (wait for key press)\n" 
+          " p - toggle pause\n" 
+          " rain - toggle rain mode\n" 
+          " f - toggle mute file playback\n" 
+          " v - toggle mute live MIDI\n" 
+          " m - toggle mute all\n" 
+          " u - unmute all\n" 
+          " h - toggle LIVE hold\n" 
+          " . - przyspiesz o 5%\n" 
+          " , - zwolnij o 5%\n" 
           " q - quit\n")
     
     update_midi_files()
@@ -590,6 +601,9 @@ def main_loop():
             select_next_midi()
         elif cmd == "b":
             select_prev_midi()
+        elif cmd == "rain":
+            send_game_command("/rain")
+            print("Toggled Rain Mode in game.")
         elif cmd == "w":
             with state_lock:
                 wait_for_key_mode = not wait_for_key_mode
@@ -652,4 +666,14 @@ def main_loop():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="VR Piano Python Backend")
+    parser.add_argument("--rain", action="store_true", help="Toggle rain mode in the Unreal project on startup.")
+    args = parser.parse_args()
+
+    if args.rain:
+        # Give the game a moment to start up and listen on the socket
+        time.sleep(2) 
+        send_game_command("/rain")
+        print("Sent /rain command to Unreal Engine.")
+
     main_loop()

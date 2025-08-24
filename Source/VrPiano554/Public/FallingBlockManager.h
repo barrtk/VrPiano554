@@ -57,6 +57,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
     void SetSongTime(float Time);
 
+    UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
+    void ToggleRainMode(bool bIsEnabled);
 
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     TSubclassOf<AFallingBlock> BlockClass;
@@ -70,9 +72,14 @@ public:
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float TargetZHeight = 50.f;
 
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks", meta = (DisplayName = "Rain Mode Key Highlight Duration"))
+    float RainModeKeyHighlightDuration = 0.5f;
+
     /** Port UDP do nasłuchiwania (np. 5005) */
     UPROPERTY(EditAnywhere, Category = "Networking")
     int32 ListenPort = 5008; // Changed port to 5008 to avoid conflict
+
+    void OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint);
 
 private:
     int32 NextBlockIndex;
@@ -86,7 +93,7 @@ private:
     TArray<FBlockSpawnInfo> ArrivalTimes; // Changed from TArray<float>
 
     void StartUDPListener();
-    void OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint);
+
 
     APianoActor* PianoActorRef;
     AVrPianoPawn* VrPianoPawnRef;
@@ -105,4 +112,5 @@ private:
 
     bool bIsCurrentlyPaused;
     bool bHasPopulatedKeyData;
+    bool bRainMode = false;
 };

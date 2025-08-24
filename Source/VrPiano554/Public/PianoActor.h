@@ -73,6 +73,8 @@ public:
     // Functions to handle highlighting keys
     void HighlightKeys(const TArray<int32>& NotesToHighlight);
     void UnhighlightKeys(const TArray<int32>& NotesToUnhighlight);
+    void HighlightKeyForDuration(int32 MidiNote, float Duration);
+
 
     //~ Begin Menu Functions
     UFUNCTION(BlueprintCallable, Category = "Piano|Menu")
@@ -271,6 +273,8 @@ private:
 
     // Map to store original materials of highlighted keys
     TMap<int32, UMaterialInterface*> OriginalKeyMaterials;
+    TMap<int32, FTimerHandle> KeyHighlightTimers;
+
 
     // Offset calculated at runtime to center the piano model
     FVector CalculatedOffset;

@@ -21,7 +21,7 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     /** Initializes the block, setting its duration, speed, start position, and target Z height. */
-    void InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode);
+    void InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode, bool bInIsRainMode);
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
     bool bIsLearningMode;
@@ -49,6 +49,9 @@ public:
     // The Z-coordinate where the block should be destroyed (e.g., the top of the piano keys).
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float TargetZHeight = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Falling Blocks", meta = (DisplayName = "Post-Collision Life Span"))
+    float PostCollisionLifeSpan = 0.25f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Blocks")
     int32 MidiNote;
@@ -85,4 +88,5 @@ private:
 
     float SpawnTime;
     bool bIsPaused;
+    bool bIsInRainMode;
 };

@@ -45,6 +45,7 @@ AFallingBlockManager::AFallingBlockManager()
     PianoActorRef = nullptr; // Initialize
     VrPianoPawnRef = nullptr; // Initialize
 	bIsCurrentlyPaused = false;
+    bRainMode = false; // Initialize rain mode
 }
 
 AFallingBlockManager::~AFallingBlockManager()
@@ -192,7 +193,7 @@ void AFallingBlockManager::Tick(float DeltaTime)
                 AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, KeyTransform.GetLocation(), BlockRotation);
                 if (NewBlock)
                 {
-                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode);
+                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode, bRainMode);
                 }
             }
             else
@@ -244,10 +245,17 @@ void AFallingBlockManager::StartUDPListener()
 
 void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint)
 {
-    FString JsonString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(Data->GetData())));
+    FString ReceivedString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(Data->GetData())));
+
+    // Check for commands first
+    if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/rain"), ESearchCase::IgnoreCase))
+    {
+        ToggleRainMode(!bRainMode); // Toggle current state
+        return;
+    }
 
     TSharedPtr<FJsonObject> JsonObject;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ReceivedString);
 
     if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
     {
@@ -268,12 +276,12 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Received UDP JSON missing 'time' or 'midi_note' field: %s"), *JsonString);
+            UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Received UDP JSON missing 'time' or 'midi_note' field: %s"), *ReceivedString);
         }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("FallingBlockManager: Failed to parse UDP JSON: %s"), *JsonString);
+        UE_LOG(LogTemp, Error, TEXT("FallingBlockManager: Failed to parse UDP JSON: %s"), *ReceivedString);
     }
 }
 
@@ -289,4 +297,15 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
     ArrivalTimes = NewArrivalTimes;
     NextBlockIndex = 0;
     CurrentSongTime = 0.0f;
+}
+
+void AFallingBlockManager::ToggleRainMode(bool bIsEnabled)
+{
+    bRainMode = bIsEnabled;
+    FString Status = bRainMode ? TEXT("ENABLED") : TEXT("DISABLED");
+    UE_LOG(LogTemp, Warning, TEXT("Rain Mode has been %s"), *Status);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("Rain Mode: %s"), *Status));
+    }
 }

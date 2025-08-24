@@ -19,6 +19,7 @@ AFallingBlock::AFallingBlock()
     BlockMesh->SetSimulatePhysics(false);
 
 	bIsPaused = false;
+    bIsInRainMode = false; // Initialize rain mode
 }
 
 void AFallingBlock::BeginPlay()
@@ -76,7 +77,7 @@ void AFallingBlock::Tick(float DeltaTime)
 	}
 }
 
-void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode)
+void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InFallSpeed, float InStartHeight, float InTargetZHeight, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode, bool bInIsRainMode)
 {
     MidiNote = InMidiNote;
     SequenceNumber = InSequenceNumber;
@@ -89,6 +90,7 @@ void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float In
     PianoActorRef = InPianoActor;
     NoteName = InNoteName; // Set the new property
     bIsLearningMode = bInIsLearningMode; // Store learning mode state
+    bIsInRainMode = bInIsRainMode; // Store rain mode state
 
 #if WITH_EDITOR
     // Set the actor's label for debugging
@@ -111,24 +113,23 @@ void AFallingBlock::OnBlockOverlapBegin(UPrimitiveComponent* OverlappedComp, AAc
     // Stop the block from falling further
     FallSpeed = 0.0f;
 
-    // Check if we have a valid PianoActor reference
     if (PianoActorRef)
     {
-        // We could check if OtherActor is the PianoActor, but it's more robust to check if the overlapped component is a key.
-        // For now, we assume any overlap that stops the block should trigger the note.
-        PianoActorRef->PlayNote(MidiNote, NoteDuration);
+        if (bIsInRainMode)
+        {
+            // In Rain Mode, just highlight the key
+            PianoActorRef->HighlightKeyForDuration(MidiNote, 0.5f); // Duration is configurable in FallingBlockManager
+        }
+        else
+        {
+            // In normal or learning mode, play the note animation
+            PianoActorRef->PlayNote(MidiNote, NoteDuration);
+        }
     }
 
-    if (!bIsLearningMode)
-    {
-        // If not in learning mode, destroy immediately
-        Destroy();
-    }
-    else
-    {
-        // If in learning mode, set a lifespan for delayed destruction
-        SetLifeSpan(2.0f);
-    }
+    // Set a lifespan for the block to be destroyed after a delay
+    // This allows the player to see the block on the key for a moment
+    SetLifeSpan(PostCollisionLifeSpan);
 }
 
 void AFallingBlock::PauseBlock()

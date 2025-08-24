@@ -453,6 +453,32 @@ void APianoActor::UnhighlightKeys(const TArray<int32>& NotesToUnhighlight)
     }
 }
 
+void APianoActor::HighlightKeyForDuration(int32 MidiNote, float Duration)
+{
+    // First, clear any existing timer for this key to avoid conflicts
+    if (FTimerHandle* ExistingTimer = KeyHighlightTimers.Find(MidiNote))
+    {
+        GetWorldTimerManager().ClearTimer(*ExistingTimer);
+        KeyHighlightTimers.Remove(MidiNote);
+    }
+
+    // Highlight the key
+    HighlightKeys({MidiNote});
+
+    // Set a timer to unhighlight the key after the duration
+    FTimerHandle NewTimerHandle;
+    FTimerDelegate UnhighlightDelegate;
+    UnhighlightDelegate.BindLambda([this, MidiNote]()
+    {
+        UnhighlightKeys({MidiNote});
+        KeyHighlightTimers.Remove(MidiNote);
+    });
+
+    GetWorldTimerManager().SetTimer(NewTimerHandle, UnhighlightDelegate, Duration, false);
+    KeyHighlightTimers.Add(MidiNote, NewTimerHandle);
+}
+
+
 void APianoActor::OnRightTriggerPressed()
 {
     if (WidgetInteractionComponent)
