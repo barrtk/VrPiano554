@@ -82,7 +82,8 @@ public:
     void OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint);
 
 private:
-    int32 NextBlockIndex;
+    int32 NextSpawnIndex;
+    int32 NextHighlightIndex;
     float CurrentSongTime;
 
     // UDP
@@ -90,7 +91,8 @@ private:
     FUdpSocketReceiver* UDPReceiver;
 
     FCriticalSection ArrivalTimesMutex;
-    TArray<FBlockSpawnInfo> ArrivalTimes; // Changed from TArray<float>
+    TArray<FBlockSpawnInfo> ArrivalTimes;
+    TArray<AFallingBlock*> ActiveBlocks;
 
     void StartUDPListener();
 

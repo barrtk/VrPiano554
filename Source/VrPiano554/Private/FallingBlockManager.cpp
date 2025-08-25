@@ -38,14 +38,15 @@ void AFallingBlockManager::PopulateKeyData()
 AFallingBlockManager::AFallingBlockManager()
 {
     PrimaryActorTick.bCanEverTick = true;
-    NextBlockIndex = 0;
+    NextSpawnIndex = 0;
+    NextHighlightIndex = 0;
     CurrentSongTime = 0.f;
     ListenSocket = nullptr;
     UDPReceiver = nullptr;
-    PianoActorRef = nullptr; // Initialize
-    VrPianoPawnRef = nullptr; // Initialize
+    PianoActorRef = nullptr; 
+    VrPianoPawnRef = nullptr; 
 	bIsCurrentlyPaused = false;
-    bRainMode = false; // Initialize rain mode
+    bRainMode = false; 
 }
 
 AFallingBlockManager::~AFallingBlockManager()
@@ -69,14 +70,12 @@ void AFallingBlockManager::BeginPlay()
     Super::BeginPlay();
     StartUDPListener();
 
-    // Find PianoActor
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), APianoActor::StaticClass(), FoundActors);
     if (FoundActors.Num() > 0)
     {
         PianoActorRef = Cast<APianoActor>(FoundActors[0]);
         UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Found PianoActor."));
-        // Bind to PianoActor's OnKeysInitialized event
         if (PianoActorRef)
         {
             PianoActorRef->OnKeysInitialized.AddDynamic(this, &AFallingBlockManager::OnPianoKeysInitialized);
@@ -88,7 +87,6 @@ void AFallingBlockManager::BeginPlay()
         UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: PianoActor not found!"));
     }
 
-    // Find VrPianoPawn
     FoundActors.Empty();
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AVrPianoPawn::StaticClass(), FoundActors);
     if (FoundActors.Num() > 0)
@@ -124,83 +122,86 @@ void AFallingBlockManager::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!BlockClass || FallSpeed <= 0.0f) return;
+    if (!BlockClass || FallSpeed <= 0.0f || !PianoActorRef)
+    {
+        return;
+    }
 
-    // --- Pause Logic ---
-    bool bIsNowPaused = (PianoActorRef && PianoActorRef->bIsPaused);
+    bool bIsNowPaused = PianoActorRef->bIsPaused;
     if (bIsNowPaused != bIsCurrentlyPaused)
     {
         bIsCurrentlyPaused = bIsNowPaused;
-
-        TArray<AActor*> FoundBlocks;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFallingBlock::StaticClass(), FoundBlocks);
-
-        for (AActor* BlockActor : FoundBlocks)
+        for (AFallingBlock* Block : ActiveBlocks)
         {
-            AFallingBlock* Block = Cast<AFallingBlock>(BlockActor);
-            if (Block)
+            if (IsValid(Block))
             {
-                if (bIsCurrentlyPaused)
-                {
-                    Block->PauseBlock();
-                }
-                else
-                {
-                    Block->ResumeBlock();
-                }
+                bIsCurrentlyPaused ? Block->PauseBlock() : Block->ResumeBlock();
             }
         }
     }
 
     if (bIsCurrentlyPaused)
     {
-        return; // Do not advance time or spawn blocks if paused
+        return; 
     }
 
-    // --- Time and Spawning Logic ---
     CurrentSongTime += DeltaTime;
 
-    // Only process one block per tick to simplify logic and avoid race conditions
-    if (NextBlockIndex < ArrivalTimes.Num())
+    // --- 1. Update existing blocks ---
+    for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
+    {
+        AFallingBlock* Block = ActiveBlocks[i];
+        if (IsValid(Block))
+        {
+            Block->UpdatePosition(CurrentSongTime, FallSpeed, StartHeight);
+        }
+        else
+        {
+            ActiveBlocks.RemoveAt(i);
+        }
+    }
+
+    // --- 2. Spawn new blocks ---
+    if (NextSpawnIndex < ArrivalTimes.Num())
     {
         const float FallTime = (StartHeight - TargetZHeight) / FallSpeed;
-        const FBlockSpawnInfo& CurrentNoteInfo = ArrivalTimes[NextBlockIndex];
-        const float NotePlayTime = CurrentNoteInfo.Time;
-        const float BlockSpawnTime = NotePlayTime - FallTime;
+        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextSpawnIndex];
+        const float BlockSpawnTime = NoteInfo.Time - FallTime;
 
         if (CurrentSongTime >= BlockSpawnTime)
         {
-            UE_LOG(LogTemp, Log, TEXT("Tick: Spawning block for MidiNote: %d, BlockSpawnTime: %f"), CurrentNoteInfo.MidiNote, BlockSpawnTime);
-            int32 MidiNote = CurrentNoteInfo.MidiNote;
-
+            const int32 MidiNote = NoteInfo.MidiNote;
             const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
             const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
 
             if (KeyTransformPtr && KeyWidthPtr)
             {
-                const FTransform& KeyTransform = *KeyTransformPtr;
-                const float KeyWidth = *KeyWidthPtr;
-
-                FRotator BlockRotation = FRotator::ZeroRotator;
-                if (VrPianoPawnRef && VrPianoPawnRef->CameraComponent)
-                {
-                    FVector PlayerLocation = VrPianoPawnRef->CameraComponent->GetComponentLocation();
-                    FVector BlockLocation = KeyTransform.GetLocation();
-                    FVector DirectionToPlayer = (PlayerLocation - BlockLocation).GetSafeNormal();
-                    BlockRotation = DirectionToPlayer.Rotation();
-                }
-
-                AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, KeyTransform.GetLocation(), BlockRotation);
+                FVector SpawnLocation = FVector(KeyTransformPtr->GetLocation().X, KeyTransformPtr->GetLocation().Y, StartHeight);
+                FRotator SpawnRotation = PianoActorRef->GetActorRotation();
+                AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
                 if (NewBlock)
                 {
-                    NewBlock->InitBlock(MidiNote, NextBlockIndex, CurrentNoteInfo.Duration, FallSpeed, StartHeight, TargetZHeight, KeyTransform, KeyWidth, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode, bRainMode);
+                    NewBlock->InitBlock(MidiNote, NextSpawnIndex, NoteInfo.Duration, NoteInfo.Time, BlockSpawnTime, *KeyTransformPtr, *KeyWidthPtr, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode, bRainMode);
+                    NewBlock->UpdateBlockScale(FallSpeed, NoteInfo.Duration);
+                    ActiveBlocks.Add(NewBlock);
                 }
             }
             else
             {
                 UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Block will not be spawned."), MidiNote);
             }
-            NextBlockIndex++;
+            NextSpawnIndex++;
+        }
+    }
+
+    // --- 3. Trigger highlights (in rain mode) ---
+    if (bRainMode && NextHighlightIndex < ArrivalTimes.Num())
+    {
+        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
+        if (CurrentSongTime >= NoteInfo.Time)
+        {
+            PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
+            NextHighlightIndex++;
         }
     }
 }
@@ -215,13 +216,21 @@ void AFallingBlockManager::SetSongTime(float Time)
 {
     CurrentSongTime = Time;
 
+    for (AFallingBlock* Block : ActiveBlocks)
+    {
+        if(IsValid(Block)) Block->Destroy();
+    }
+    ActiveBlocks.Empty();
+
     FScopeLock Lock(&ArrivalTimesMutex);
-    NextBlockIndex = 0;
+    NextSpawnIndex = 0;
+    NextHighlightIndex = 0;
     for (int32 i = 0; i < ArrivalTimes.Num(); ++i)
     {
         if (ArrivalTimes[i].Time >= CurrentSongTime)
         {
-            NextBlockIndex = i;
+            NextSpawnIndex = i;
+            NextHighlightIndex = i;
             break;
         }
     }
@@ -247,10 +256,9 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
 {
     FString ReceivedString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(Data->GetData())));
 
-    // Check for commands first
     if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/rain"), ESearchCase::IgnoreCase))
     {
-        ToggleRainMode(!bRainMode); // Toggle current state
+        ToggleRainMode(!bRainMode);
         return;
     }
 
@@ -261,7 +269,7 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
     {
         double Time = 0.0;
         int32 MidiNote = 0;
-        double Duration = 0.5; // Default duration
+        double Duration = 0.5; 
 
         if (JsonObject->TryGetNumberField(TEXT("time"), Time) && 
             JsonObject->TryGetNumberField(TEXT("midi_note"), MidiNote))
@@ -295,7 +303,15 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
 {
     FScopeLock Lock(&ArrivalTimesMutex);
     ArrivalTimes = NewArrivalTimes;
-    NextBlockIndex = 0;
+    
+    for (AFallingBlock* Block : ActiveBlocks)
+    {
+        if(IsValid(Block)) Block->Destroy();
+    }
+    ActiveBlocks.Empty();
+
+    NextSpawnIndex = 0;
+    NextHighlightIndex = 0;
     CurrentSongTime = 0.0f;
 }
 
