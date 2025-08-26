@@ -66,8 +66,9 @@ public:
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float StartHeight = 200.f;
 
-    UPROPERTY(EditAnywhere, Category = "Falling Blocks")
-    float FallSpeed = 200.f;
+	// This is the time in seconds before the note is scheduled to be hit that the block will appear.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falling Blocks", meta = (DisplayName = "Lookahead Time"))
+	float LookaheadTime = 3.0f;
 
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float TargetZHeight = 50.f;
@@ -102,6 +103,8 @@ private:
 
     void PopulateKeyData();
     void SetMidiData(const TArray<FBlockSpawnInfo>& NewArrivalTimes);
+	void SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo);
+
 
     UFUNCTION()
     void OnPianoKeysInitialized();

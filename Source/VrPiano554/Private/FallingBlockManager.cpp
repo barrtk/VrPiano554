@@ -1,39 +1,14 @@
 #include "FallingBlockManager.h"
 #include "FallingBlock.h"
+#include "PianoActor.h"
+#include "VrPianoPawn.h"
 #include "Engine/World.h"
-#include "Sockets.h"
-#include "SocketSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 #include "Common/UdpSocketBuilder.h"
 #include "Common/UdpSocketReceiver.h"
-#include "Kismet/GameplayStatics.h" // For GetAllActorsOfClass
-#include "PianoActor.h" // For APianoActor
-#include "VrPianoPawn.h" // For AVrPianoPawn
-#include "Json.h" // For FJsonSerializer, FJsonObject
-#include "JsonUtilities.h" // For FJsonUtilities
-
-void AFallingBlockManager::PopulateKeyData()
-{
-    if (!PianoActorRef)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: PianoActorRef is not set. Cannot populate key data."));
-        return;
-    }
-
-    KeyTransforms.Empty();
-    KeyWidths.Empty();
-
-    for (int32 MidiNote = 0; MidiNote < 128; ++MidiNote)
-    {
-        FTransform KeyTransform;
-        float KeyWidth;
-        if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyTransform, KeyWidth))
-        {
-            KeyTransforms.Add(MidiNote, KeyTransform);
-            KeyWidths.Add(MidiNote, KeyWidth);
-        }
-    }
-    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Populated data for %d keys."), KeyTransforms.Num());
-}
+#include "Json.h"
+#include "JsonUtilities.h"
+#include "Containers/StringConv.h" // Required for FUTF8ToTCHAR
 
 AFallingBlockManager::AFallingBlockManager()
 {
@@ -43,10 +18,10 @@ AFallingBlockManager::AFallingBlockManager()
     CurrentSongTime = 0.f;
     ListenSocket = nullptr;
     UDPReceiver = nullptr;
-    PianoActorRef = nullptr; 
-    VrPianoPawnRef = nullptr; 
-	bIsCurrentlyPaused = false;
-    bRainMode = false; 
+    PianoActorRef = nullptr;
+    VrPianoPawnRef = nullptr;
+    bIsCurrentlyPaused = false;
+    bRainMode = false;
 }
 
 AFallingBlockManager::~AFallingBlockManager()
@@ -70,14 +45,15 @@ void AFallingBlockManager::BeginPlay()
     Super::BeginPlay();
     StartUDPListener();
 
+    // Find PianoActor and VrPianoPawn
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), APianoActor::StaticClass(), FoundActors);
     if (FoundActors.Num() > 0)
     {
         PianoActorRef = Cast<APianoActor>(FoundActors[0]);
-        UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Found PianoActor."));
         if (PianoActorRef)
         {
+            UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Found PianoActor."));
             PianoActorRef->OnKeysInitialized.AddDynamic(this, &AFallingBlockManager::OnPianoKeysInitialized);
             PianoActorRef->OnCalibrationComplete.AddDynamic(this, &AFallingBlockManager::OnPianoCalibrationComplete);
         }
@@ -87,7 +63,6 @@ void AFallingBlockManager::BeginPlay()
         UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: PianoActor not found!"));
     }
 
-    FoundActors.Empty();
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AVrPianoPawn::StaticClass(), FoundActors);
     if (FoundActors.Num() > 0)
     {
@@ -103,7 +78,7 @@ void AFallingBlockManager::BeginPlay()
 void AFallingBlockManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     Super::EndPlay(EndPlayReason);
-
+    // Cleanup UDP
     if (UDPReceiver)
     {
         UDPReceiver->Stop();
@@ -122,11 +97,12 @@ void AFallingBlockManager::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    if (!BlockClass || FallSpeed <= 0.0f || !PianoActorRef)
+    if (!BlockClass || !PianoActorRef || !bHasPopulatedKeyData)
     {
         return;
     }
 
+    // Handle pause state
     bool bIsNowPaused = PianoActorRef->bIsPaused;
     if (bIsNowPaused != bIsCurrentlyPaused)
     {
@@ -142,74 +118,99 @@ void AFallingBlockManager::Tick(float DeltaTime)
 
     if (bIsCurrentlyPaused)
     {
-        return; 
+        return;
     }
 
     CurrentSongTime += DeltaTime;
 
-    // --- 1. Update existing blocks ---
-    for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
+    // --- 1. Spawn new blocks ---
+    while (NextSpawnIndex < ArrivalTimes.Num())
     {
-        AFallingBlock* Block = ActiveBlocks[i];
-        if (IsValid(Block))
+        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextSpawnIndex];
+        // Spawn condition based on LookaheadTime
+        if (CurrentSongTime >= NoteInfo.Time - LookaheadTime)
         {
-            Block->UpdatePosition(CurrentSongTime, FallSpeed, StartHeight);
+            SpawnBlockForNote(NoteInfo);
+            NextSpawnIndex++;
         }
         else
         {
-            ActiveBlocks.RemoveAt(i);
+            // Notes are sorted, so we can break early
+            break;
         }
     }
 
-    // --- 2. Spawn new blocks ---
-    if (NextSpawnIndex < ArrivalTimes.Num())
-    {
-        const float FallTime = (StartHeight - TargetZHeight) / FallSpeed;
-        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextSpawnIndex];
-        const float BlockSpawnTime = NoteInfo.Time - FallTime;
-
-        if (CurrentSongTime >= BlockSpawnTime)
-        {
-            const int32 MidiNote = NoteInfo.MidiNote;
-            const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
-            const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
-
-            if (KeyTransformPtr && KeyWidthPtr)
-            {
-                FVector SpawnLocation = FVector(KeyTransformPtr->GetLocation().X, KeyTransformPtr->GetLocation().Y, StartHeight);
-                FRotator SpawnRotation = PianoActorRef->GetActorRotation();
-                AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
-                if (NewBlock)
-                {
-                    NewBlock->InitBlock(MidiNote, NextSpawnIndex, NoteInfo.Duration, NoteInfo.Time, BlockSpawnTime, *KeyTransformPtr, *KeyWidthPtr, PianoActorRef, APianoActor::GetNoteName(MidiNote), PianoActorRef->bIsLearningMode, bRainMode);
-                    NewBlock->UpdateBlockScale(FallSpeed, NoteInfo.Duration);
-                    ActiveBlocks.Add(NewBlock);
-                }
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Block will not be spawned."), MidiNote);
-            }
-            NextSpawnIndex++;
-        }
-    }
-
-    // --- 3. Trigger highlights (in rain mode) ---
-    if (bRainMode && NextHighlightIndex < ArrivalTimes.Num())
+    // --- 2. Trigger highlights and sounds ---
+    while (NextHighlightIndex < ArrivalTimes.Num())
     {
         const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
         if (CurrentSongTime >= NoteInfo.Time)
         {
-            PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
+            if (bRainMode)
+            {
+                PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
+            }
+            else
+            {
+                // In normal mode, play the note sound and animation
+                PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
+            }
             NextHighlightIndex++;
+        }
+        else
+        {
+            // Notes are sorted, so we can break early
+            break;
+        }
+    }
+	
+    // --- 3. Update existing blocks (they move themselves now) ---
+	for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
+    {
+        if (!IsValid(ActiveBlocks[i]))
+        {
+            ActiveBlocks.RemoveAt(i);
         }
     }
 }
+
+void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
+{
+    const int32 MidiNote = NoteInfo.MidiNote;
+    const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
+    const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
+
+    if (KeyTransformPtr && KeyWidthPtr)
+    {
+        FVector KeyLocation = KeyTransformPtr->GetLocation();
+        FVector SpawnLocation = FVector(KeyLocation.X, KeyLocation.Y, StartHeight);
+        FVector TargetLocation = FVector(KeyLocation.X, KeyLocation.Y, TargetZHeight);
+        FRotator SpawnRotation = PianoActorRef->GetActorRotation();
+
+        AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
+        if (NewBlock)
+        {
+            // Calculate dynamic speed
+            float Distance = FVector::Dist(SpawnLocation, TargetLocation);
+            float Speed = (LookaheadTime > 0) ? Distance / LookaheadTime : 0.0f;
+
+            NewBlock->Initialize(TargetLocation, Speed, NoteInfo.Duration, *KeyWidthPtr);
+            
+            ActiveBlocks.Add(NewBlock);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Block will not be spawned."), MidiNote);
+    }
+}
+
 
 void AFallingBlockManager::OnPianoKeysInitialized()
 {
     UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received OnPianoKeysInitialized event. Populating key data."));
     PopulateKeyData();
+	bHasPopulatedKeyData = true;
 }
 
 void AFallingBlockManager::SetSongTime(float Time)
@@ -233,6 +234,12 @@ void AFallingBlockManager::SetSongTime(float Time)
             NextHighlightIndex = i;
             break;
         }
+		if (i == ArrivalTimes.Num() - 1)
+		{
+			// If we reached the end, set indices to the end
+			NextSpawnIndex = ArrivalTimes.Num();
+			NextHighlightIndex = ArrivalTimes.Num();
+		}
     }
 }
 
@@ -242,23 +249,37 @@ void AFallingBlockManager::StartUDPListener()
         .AsNonBlocking()
         .AsReusable()
         .BoundToPort(ListenPort)
-        .WithReceiveBufferSize(1024);
+        .WithReceiveBufferSize(2 * 1024 * 1024); // Increased buffer size for larger MIDI files
 
     if (ListenSocket)
     {
         UDPReceiver = new FUdpSocketReceiver(ListenSocket, FTimespan::FromMilliseconds(10), TEXT("UDP_Receiver"));
         UDPReceiver->OnDataReceived().BindUObject(this, &AFallingBlockManager::OnUDPMessageReceived);
         UDPReceiver->Start();
+        UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: UDP Listener started on port %d."), ListenPort);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("FallingBlockManager: Failed to create UDP Listener on port %d."), ListenPort);
     }
 }
 
 void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint)
 {
-    FString ReceivedString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(Data->GetData())));
+    // Use FUTF8ToTCHAR to safely convert a sized buffer from UTF-8 to TCHAR
+    FUTF8ToTCHAR Converter(reinterpret_cast<const char*>(Data->GetData()), Data->Num());
+    const FString ReceivedString(Converter.Length(), Converter.Get());
 
     if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/rain"), ESearchCase::IgnoreCase))
     {
         ToggleRainMode(!bRainMode);
+        return;
+    }
+	
+    if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/start_song"), ESearchCase::IgnoreCase))
+    {
+		UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received /start_song command. Resetting state."));
+        SetMidiData(this->ArrivalTimes); // Reset song with currently buffered notes
         return;
     }
 
@@ -267,24 +288,26 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
 
     if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
     {
-        double Time = 0.0;
-        int32 MidiNote = 0;
-        double Duration = 0.5; 
+        TArray<FBlockSpawnInfo> NewNotes;
+        const TArray<TSharedPtr<FJsonValue>>* NotesJsonArray;
 
-        if (JsonObject->TryGetNumberField(TEXT("time"), Time) && 
-            JsonObject->TryGetNumberField(TEXT("midi_note"), MidiNote))
+        if (JsonObject->TryGetArrayField(TEXT("notes"), NotesJsonArray))
         {
-            JsonObject->TryGetNumberField(TEXT("duration"), Duration);
-
-            if (Time > 0)
+            // We received a full song
+            for (const auto& Value : *NotesJsonArray)
             {
-                FScopeLock Lock(&ArrivalTimesMutex);
-                ArrivalTimes.Add(FBlockSpawnInfo(Time, MidiNote, Duration));
+                const TSharedPtr<FJsonObject>& NoteObject = Value->AsObject();
+                if (NoteObject.IsValid())
+                {
+                    NewNotes.Add(FBlockSpawnInfo(
+                        NoteObject->GetNumberField(TEXT("time")),
+                        NoteObject->GetIntegerField(TEXT("midi_note")),
+                        NoteObject->GetNumberField(TEXT("duration"))
+                    ));
+                }
             }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Received UDP JSON missing 'time' or 'midi_note' field: %s"), *ReceivedString);
+            UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received full song with %d notes."), NewNotes.Num());
+            SetMidiData(NewNotes);
         }
     }
     else
@@ -304,6 +327,11 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
     FScopeLock Lock(&ArrivalTimesMutex);
     ArrivalTimes = NewArrivalTimes;
     
+    // Sort the array by time to ensure correct processing order
+    ArrivalTimes.Sort([](const FBlockSpawnInfo& A, const FBlockSpawnInfo& B) {
+        return A.Time < B.Time;
+    });
+
     for (AFallingBlock* Block : ActiveBlocks)
     {
         if(IsValid(Block)) Block->Destroy();
@@ -313,6 +341,8 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
     NextSpawnIndex = 0;
     NextHighlightIndex = 0;
     CurrentSongTime = 0.0f;
+	
+	UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: MIDI data set and sorted. Ready to play."));
 }
 
 void AFallingBlockManager::ToggleRainMode(bool bIsEnabled)
@@ -324,4 +354,28 @@ void AFallingBlockManager::ToggleRainMode(bool bIsEnabled)
     {
         GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("Rain Mode: %s"), *Status));
     }
+}
+
+void AFallingBlockManager::PopulateKeyData()
+{
+    if (!PianoActorRef)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: PianoActorRef is not set. Cannot populate key data."));
+        return;
+    }
+
+    KeyTransforms.Empty();
+    KeyWidths.Empty();
+
+    for (int32 MidiNote = 0; MidiNote < 128; ++MidiNote)
+    {
+        FTransform KeyTransform;
+        float KeyWidth;
+        if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyTransform, KeyWidth))
+        {
+            KeyTransforms.Add(MidiNote, KeyTransform);
+            KeyWidths.Add(MidiNote, KeyWidth);
+        }
+    }
+    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Populated data for %d keys."), KeyTransforms.Num());
 }

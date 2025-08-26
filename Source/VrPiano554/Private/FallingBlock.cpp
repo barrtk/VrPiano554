@@ -1,7 +1,6 @@
 #include "FallingBlock.h"
 #include "Components/StaticMeshComponent.h"
-#include "Engine/StaticMesh.h"
-#include "PianoActor.h"
+#include "Math/UnrealMathUtility.h"
 
 AFallingBlock::AFallingBlock()
 {
@@ -10,95 +9,75 @@ AFallingBlock::AFallingBlock()
 	BlockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockMesh"));
 	RootComponent = BlockMesh;
 
-    BlockMesh->SetGenerateOverlapEvents(true);
-    BlockMesh->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
-    BlockMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
-    BlockMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    BlockMesh->SetSimulatePhysics(false);
-
-	bIsPaused = false;
-    bIsInRainMode = false;
-    NotePlayTime = 0.f;
-    SpawnTime = 0.f;
+	MovementSpeed = 0.0f;
+	bIsActive = false;
 }
 
 void AFallingBlock::BeginPlay()
 {
 	Super::BeginPlay();
-    BlockMesh->OnComponentBeginOverlap.AddDynamic(this, &AFallingBlock::OnBlockOverlapBegin);
 }
 
 void AFallingBlock::Tick(float DeltaTime)
 {
-    Super::Tick(DeltaTime);
-}
+	Super::Tick(DeltaTime);
 
-void AFallingBlock::UpdatePosition(float CurrentGlobalTime, float InFallSpeed, float InStartHeight)
-{
-    if (bIsPaused || SpawnTime <= 0.f) return;
-
-    if (CurrentGlobalTime >= SpawnTime)
-    {
-        const float TimeSinceSpawn = CurrentGlobalTime - SpawnTime;
-        const float DistanceFallen = TimeSinceSpawn * InFallSpeed;
-        FVector NewLocation = GetActorLocation();
-        NewLocation.Z = InStartHeight - DistanceFallen;
-        SetActorLocation(NewLocation);
-
-        UE_LOG(LogTemp, Log, TEXT("Block %d (Note %d): CurrentTime=%.2f, SpawnTime=%.2f, StartHeight=%.2f, NewZ=%.2f"), 
-            SequenceNumber, MidiNote, CurrentGlobalTime, SpawnTime, InStartHeight, NewLocation.Z);
-    }
-}
-
-void AFallingBlock::InitBlock(int32 InMidiNote, int32 InSequenceNumber, float InNoteDuration, float InNotePlayTime, float InSpawnTime, const FTransform& InTargetKeyTransform, float InTargetKeyWidth, APianoActor* InPianoActor, const FString& InNoteName, bool bInIsLearningMode, bool bInIsRainMode)
-{
-    MidiNote = InMidiNote;
-    SequenceNumber = InSequenceNumber;
-    NoteDuration = InNoteDuration;
-    NotePlayTime = InNotePlayTime;
-    SpawnTime = InSpawnTime;
-    TargetKeyTransform = InTargetKeyTransform;
-    TargetKeyWidth = InTargetKeyWidth;
-    PianoActorRef = InPianoActor;
-    NoteName = InNoteName;
-    bIsLearningMode = bInIsLearningMode;
-    bIsInRainMode = bInIsRainMode;
-
-#if WITH_EDITOR
-    SetActorLabel(FString::Printf(TEXT("Block_%d_%s"), SequenceNumber, *InNoteName));
-#endif
-
-    if (BlockMesh && DefaultBlockMesh && BlockMesh->GetStaticMesh() == nullptr)
-    {
-        BlockMesh->SetStaticMesh(DefaultBlockMesh);
-    }
-}
-
-void AFallingBlock::UpdateBlockScale(float InFallSpeed, float InNoteDuration)
-{
-	if (BlockMesh && BlockMesh->GetStaticMesh())
+	if (!bIsActive)
 	{
-		const FVector MeshSize = BlockMesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0f;
-
-		if (MeshSize.Y <= 0.0f || MeshSize.X <= 0.0f || MeshSize.Z <= 0.0f) return;
-
-		const float DesiredLength = FMath::Max(InFallSpeed * InNoteDuration, 1.0f);
-
-        FVector NewScale = FVector(
-            (TargetKeyWidth / MeshSize.X) * WidthScaleMultiplier,
-            DepthScale / MeshSize.Y,
-            (DesiredLength / MeshSize.Z) * LengthScaleMultiplier
-        );
-
-		SetActorScale3D(NewScale);
+		return;
 	}
+
+	// Move towards the target with constant speed using manual vector math
+	FVector CurrentLocation = GetActorLocation();
+    float DistanceToTarget = FVector::Dist(CurrentLocation, TargetLocation);
+    float DistanceToMove = MovementSpeed * DeltaTime;
+
+    if (DistanceToMove >= DistanceToTarget)
+    {
+        // If we are close enough, just snap to the target and destroy
+        SetActorLocation(TargetLocation);
+        Destroy();
+    }
+    else
+    {
+        // Otherwise, move along the direction vector
+        FVector Direction = (TargetLocation - CurrentLocation).GetSafeNormal();
+        FVector NewLocation = CurrentLocation + Direction * DistanceToMove;
+        SetActorLocation(NewLocation);
+    }
 }
 
-void AFallingBlock::OnBlockOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth)
 {
-    SetLifeSpan(PostCollisionLifeSpan);
-    this->SetActorEnableCollision(false);
+	TargetLocation = InTargetLocation;
+	MovementSpeed = InSpeed;
+
+	// --- Dynamic Scaling Logic ---
+	// This assumes the base mesh is a 100x100x100 unit cube.
+	// Axis mapping assumption: X=Depth, Y=Width, Z=Height/Length
+
+	// Set a fixed, small depth for the block to make it appear flat.
+	float ScaleX = 0.08f; // e.g., 8 units deep
+
+	// Calculate width based on the key's width.
+	// A small margin is subtracted for better visual separation between adjacent blocks.
+	float Margin = 1.0f;
+	float ScaleY = (InKeyWidth > Margin) ? (InKeyWidth - Margin) / 100.0f : 0.1f;
+
+	// Calculate height (length) based on speed and note duration.
+	float ScaleZ = (MovementSpeed > 0 && InDuration > 0) ? (MovementSpeed * InDuration) / 100.0f : 0.2f;
+
+	BlockMesh->SetWorldScale3D(FVector(ScaleX, ScaleY, ScaleZ));
+
+	bIsActive = true;
 }
 
-void AFallingBlock::PauseBlock() { bIsPaused = true; }
-void AFallingBlock::ResumeBlock() { bIsPaused = false; }
+void AFallingBlock::PauseBlock()
+{
+	bIsActive = false;
+}
+
+void AFallingBlock::ResumeBlock()
+{
+	bIsActive = true;
+}

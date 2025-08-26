@@ -203,7 +203,7 @@ def play_sound(note, source="live"):
             channel.set_volume(volume)
             channel.play(sounds[note])
             active_channels[note] = channel
-            print(f"[DEBUG] Played note {note}. Active channels: {len(active_channels)}")
+            # print(f"[DEBUG] Played note {note}. Active channels: {len(active_channels)}")
         else:
             print(f"[WARNING] Could not play note {note}. No free channels. Active channels: {len(active_channels)}")
 
@@ -216,7 +216,7 @@ def stop_sound(note, source="live", force=False):
         try:
             active_channels[note].stop() # Immediately stop the sound
             active_channels.pop(note, None)
-            print(f"[DEBUG] Stopped note {note}. Active channels: {len(active_channels)}")
+            # print(f"[DEBUG] Stopped note {note}. Active channels: {len(active_channels)}")
         except (KeyError, Exception) as e:
             print(f"[WARNING] Error stopping sound for note {note}: {e}")
 
@@ -227,6 +227,35 @@ def midi_to_note_name(midi_note):
     note = note_names[midi_note % 12]
     octave = (midi_note // 12) - 1
     return f"{note}{octave}"
+
+# ---------- NEW: Function to send all MIDI data at once ----------
+def send_full_song_data(file_path):
+    """Parses a MIDI file and sends all note data in a single JSON packet."""
+    global speed_factor
+    print(f"[SongData] Parsing {file_path} to send full song data.")
+    try:
+        pm = pretty_midi.PrettyMIDI(file_path)
+        notes_list = []
+        for instrument in pm.instruments:
+            for note in instrument.notes:
+                if 21 <= note.pitch <= 108:
+                    notes_list.append({
+                        "time": note.start, # Send original time, speed factor is handled in UE
+                        "midi_note": int(note.pitch),
+                        "duration": max(0.0, note.end - note.start)
+                    })
+        
+        payload = {"notes": notes_list}
+        json_payload = json.dumps(payload, ensure_ascii=False)
+        message_bytes = json_payload.encode('utf-8')
+
+        print(f"[SongData] Sending song data ({len(message_bytes)} bytes) to {UDP_IP_SEND}:{UDP_PORT_FALLING_BLOCKS}")
+        falling_block_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_FALLING_BLOCKS))
+        time.sleep(0.1) # Give a moment for the packet to be processed
+
+    except Exception as e:
+        print(f"ERROR: Could not parse or send full song data: {e}")
+
 
 # ---------- MIDI FILE PLAYBACK ----------
 def play_midi_file_prettymidi(file_path):
@@ -269,21 +298,8 @@ def play_midi_file_prettymidi(file_path):
             
             last_start_time = note.start
 
-            # Send falling block data to Unreal
-            if 21 <= note.pitch <= 108:
-                try:
-                    falling_block_data = {
-                        "time": note.start / speed_factor,  # Adjust for playback speed
-                        "midi_note": int(note.pitch)  # Ensure integer
-                    }
-                    json_falling_block = json.dumps(falling_block_data, ensure_ascii=False)
-                    message_bytes = json_falling_block.encode('utf-8') + b'\0'  # Add null terminator
-                    falling_block_sock.sendto(message_bytes, (UDP_IP_SEND, UDP_PORT_FALLING_BLOCKS))
-                    print(f"[DEBUG] --> PY->UE (FallingBlock): Sent to {UDP_IP_SEND}:{UDP_PORT_FALLING_BLOCKS}: {json_falling_block}")
-                except Exception as e:
-                    print(f"ERROR sending falling block data: {e}")
-            else:
-                print(f"[WARNING] Invalid MIDI note {note.pitch} ignored.")
+            # NOTE: The old per-note sending logic has been removed from here.
+            # The full song data is now sent by send_full_song_data() at the beginning.
 
             if wait_for_key_mode:
                 with state_lock:
@@ -344,6 +360,10 @@ def start_file_playback():
         if not midi_path:
             print("ERROR: No MIDI file selected.")
             return
+        
+        # Send all song data before starting playback thread
+        send_full_song_data(midi_path)
+
         file_thread = threading.Thread(target=file_playback_thread, args=(midi_path,), daemon=True)
         file_thread.start()
     was_playing = True
@@ -368,6 +388,10 @@ def restart_file_playback():
     if not midi_path:
         print("ERROR: No MIDI file selected.")
         return
+
+    # Send all song data before starting playback thread
+    send_full_song_data(midi_path)
+
     send_ui_update({"command": "update_midi_info", "midi_info": f"MIDI: {os.path.basename(midi_path)}"})
     file_thread = threading.Thread(target=file_playback_thread, args=(midi_path,), daemon=True)
     file_thread.start()
@@ -466,7 +490,7 @@ def udp_receiver_thread():
             message = json.loads(data.decode('utf-8'))
             command = message.get("command")
             
-            print(f"[DEBUG] Received command: {command}")
+            # print(f"[DEBUG] Received command: {command}")
 
             if command == "kalibracja_x_mniej":
                 send_ui_update({"command": "adjust_x", "value": -1.0})
@@ -629,7 +653,7 @@ def main_loop():
         elif cmd == "p":
             with state_lock:
                 is_paused = not is_paused
-                send_ui_update({"command": "toggle_pause", "is_paused": is_paused})  # Notify Unreal
+                send_ui_update({"command": "toggle_pause", "is_paused": is_paused})
             print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
         elif cmd == "h":
             with state_lock:
@@ -663,7 +687,6 @@ def main_loop():
     receive_sock.close()
     pygame.mixer.quit()
     print("Program zakończył działanie.")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="VR Piano Python Backend")
