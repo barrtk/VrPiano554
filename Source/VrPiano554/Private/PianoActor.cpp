@@ -76,6 +76,7 @@ APianoActor::APianoActor()
     bIsLifeHoldActive = false;
 
     SenderSocket = nullptr;
+	CalculatedOffset = FVector::ZeroVector;
 }
 
 void APianoActor::BeginPlay()
@@ -214,7 +215,12 @@ void APianoActor::SetupControllers()
 
 void APianoActor::StartCalibration()
 {
-    if (!LeftController || !RightController) return;
+    if (!LeftController || !RightController) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APianoActor::StartCalibration - Controllers not found!"));
+        return;
+    }
+    UE_LOG(LogTemp, Log, TEXT("APianoActor::StartCalibration - Calibration started, waiting for left point."));
     CalibrationState = ECalibrationState::WaitingForLeftPoint;
 }
 
@@ -224,6 +230,7 @@ void APianoActor::SetLeftCalibrationPoint()
     {
         LeftCalibrationTransform = LeftController->GetComponentTransform();
         CalibrationState = ECalibrationState::WaitingForRightPoint;
+        UE_LOG(LogTemp, Log, TEXT("APianoActor::SetLeftCalibrationPoint - Left point set at %s. Waiting for right point."), *LeftCalibrationTransform.GetLocation().ToString());
     }
 }
 
@@ -232,18 +239,34 @@ void APianoActor::SetRightCalibrationPoint()
     if (CalibrationState == ECalibrationState::WaitingForRightPoint)
     {
         RightCalibrationTransform = RightController->GetComponentTransform();
+        UE_LOG(LogTemp, Log, TEXT("APianoActor::SetRightCalibrationPoint - Right point set at %s. Applying calibration."), *RightCalibrationTransform.GetLocation().ToString());
         ApplyCalibration();
     }
 }
 
 void APianoActor::ApplyCalibration()
 {
+    FVector LeftLocation = LeftCalibrationTransform.GetLocation();
+    FVector RightLocation = RightCalibrationTransform.GetLocation();
+    float Distance = FVector::Dist(LeftLocation, RightLocation);
+
+    UE_LOG(LogTemp, Log, TEXT("APianoActor::ApplyCalibration - Left: %s, Right: %s, Distance: %f, PianoModelWidth: %f"), *LeftLocation.ToString(), *RightLocation.ToString(), Distance, PianoModelWidth);
+
+    if (PianoModelWidth <= 0.f)
+    {
+        UE_LOG(LogTemp, Error, TEXT("APianoActor::ApplyCalibration - PianoModelWidth is zero or negative. Aborting calibration."));
+        return;
+    }
+
     FVector MidPoint = FMath::Lerp(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation(), 0.5f);
     FVector Direction = (RightCalibrationTransform.GetLocation() - LeftCalibrationTransform.GetLocation()).GetSafeNormal();
     FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
     FVector RotatedOffset = NewRotation.RotateVector(CalculatedOffset);
     FVector NewLocation = MidPoint - RotatedOffset;
-    float NewScale = FVector::Dist(LeftCalibrationTransform.GetLocation(), RightCalibrationTransform.GetLocation()) / PianoModelWidth;
+    float NewScale = Distance / PianoModelWidth;
+
+    UE_LOG(LogTemp, Log, TEXT("APianoActor::ApplyCalibration - New Location: %s, New Rotation: %s, New Scale: %f"), *NewLocation.ToString(), *NewRotation.ToString(), NewScale);
+
     SetActorLocationAndRotation(NewLocation, NewRotation);
     SetActorScale3D(FVector(NewScale));
     CalibrationState = ECalibrationState::Idle;

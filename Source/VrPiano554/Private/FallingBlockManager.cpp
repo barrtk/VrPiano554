@@ -369,6 +369,11 @@ void AFallingBlockManager::PopulateKeyData()
     KeyTransforms.Empty();
     KeyWidths.Empty();
 
+    // Get the piano's scale to correctly size the falling blocks
+    const FVector PianoScale = PianoActorRef->GetActorScale3D();
+    // We assume the keys are laid out along the Y-axis, so we use the Y-scale for the width.
+    const float KeyWidthScale = PianoScale.Y;
+
     for (int32 MidiNote = 0; MidiNote < 128; ++MidiNote)
     {
         FTransform KeyTransform;
@@ -376,7 +381,8 @@ void AFallingBlockManager::PopulateKeyData()
         if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyTransform, KeyWidth))
         {
             KeyTransforms.Add(MidiNote, KeyTransform);
-            KeyWidths.Add(MidiNote, KeyWidth);
+            // Scale the key width by the piano's scale
+            KeyWidths.Add(MidiNote, KeyWidth * KeyWidthScale);
         }
     }
     UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Populated data for %d keys."), KeyTransforms.Num());
