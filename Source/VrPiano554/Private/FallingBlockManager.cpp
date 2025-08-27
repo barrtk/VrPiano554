@@ -56,9 +56,8 @@ void AFallingBlockManager::BeginPlay()
             UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Found PianoActor."));
             PianoActorRef->OnKeysInitialized.AddDynamic(this, &AFallingBlockManager::OnPianoKeysInitialized);
             PianoActorRef->OnCalibrationComplete.AddDynamic(this, &AFallingBlockManager::OnPianoCalibrationComplete);
-
-            // This is an assumption. If the delegate has a different name in APianoActor, this line will need to be changed.
             PianoActorRef->OnPlayerNotePlayed.AddDynamic(this, &AFallingBlockManager::OnNotePlayed);
+            PianoActorRef->OnLearningModeStateChanged.AddDynamic(this, &AFallingBlockManager::OnLearningModeChanged);
         }
     }
     else
@@ -105,88 +104,104 @@ void AFallingBlockManager::Tick(float DeltaTime)
         return;
     }
 
-    // Check for pause or learning mode
-    bool bShouldBePaused = PianoActorRef->bIsPaused; // Learning mode no longer pauses the whole manager
-
-    // If the pause state changed, update all active blocks
-    if (bShouldBePaused != bIsCurrentlyPaused)
+    // Handle general pause
+    if (PianoActorRef->bIsPaused)
     {
-        bIsCurrentlyPaused = bShouldBePaused;
-        for (AFallingBlock* Block : ActiveBlocks)
+        if (!bIsCurrentlyPaused)
         {
-            if (IsValid(Block))
-            {
-                bIsCurrentlyPaused ? Block->PauseBlock() : Block->ResumeBlock();
-            }
+            bIsCurrentlyPaused = true;
+            for (AFallingBlock* Block : ActiveBlocks) { if(IsValid(Block)) Block->PauseBlock(); }
+        }
+        return; // A hard pause stops everything.
+    }
+    else
+    {
+        if (bIsCurrentlyPaused)
+        {
+            bIsCurrentlyPaused = false;
+            for (AFallingBlock* Block : ActiveBlocks) { if(IsValid(Block)) Block->ResumeBlock(); }
         }
     }
 
-    if (bIsCurrentlyPaused)
+    // --- Main Logic ---
+    if (PianoActorRef->bIsLearningMode)
     {
-        return; // If paused, do nothing else this frame.
-    }
-
-    // If not paused, advance song time ONLY if not in learning mode
-    if (!PianoActorRef->bIsLearningMode)
-    {
-        CurrentSongTime += DeltaTime;
-    }
-
-    // --- 1. Spawn new blocks ---
-    while (NextSpawnIndex < ArrivalTimes.Num())
-    {
-        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextSpawnIndex];
-        // Spawn condition based on LookaheadTime
-        if (CurrentSongTime >= NoteInfo.Time - LookaheadTime)
+        // --- LEARNING MODE: Step-by-step logic ---
+        if (WaitingNotes.IsEmpty())
         {
-            SpawnBlockForNote(NoteInfo);
+            if (NextHighlightIndex < ArrivalTimes.Num())
+            {
+                const float NextEventTime = ArrivalTimes[NextHighlightIndex].Time;
+                CurrentSongTime = NextEventTime; // Set time for lookahead calculation
+
+                // Process all notes at this exact time (for chords)
+                int32 TempIndex = NextHighlightIndex;
+                while (TempIndex < ArrivalTimes.Num() && ArrivalTimes[TempIndex].Time == NextEventTime)
+                {
+                    const FBlockSpawnInfo& NoteInfo = ArrivalTimes[TempIndex];
+                    SpawnBlockForNote(NoteInfo);
+                    PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, 3600.0f); // Highlight indefinitely
+                    WaitingNotes.Add(NoteInfo.MidiNote);
+                    TempIndex++;
+                }
+                NextHighlightIndex = TempIndex;
+                NextSpawnIndex = TempIndex; // Keep spawn index in sync
+            }
+        }
+        // Else: we are waiting for player input, so do nothing.
+    }
+    else
+    {
+        // --- NORMAL MODE: Continuous playback ---
+        CurrentSongTime += DeltaTime;
+
+        // Spawn new blocks based on lookahead time
+        while (NextSpawnIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextSpawnIndex].Time - LookaheadTime)
+        {
+            SpawnBlockForNote(ArrivalTimes[NextSpawnIndex]);
             NextSpawnIndex++;
         }
-        else
-        {
-            // Notes are sorted, so we can break early
-            break;
-        }
-    }
 
-    // --- 2. Trigger highlights and sounds ---
-    // In learning mode, this loop will only run when CurrentSongTime is advanced manually.
-    while (NextHighlightIndex < ArrivalTimes.Num())
-    {
-        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
-        if (CurrentSongTime >= NoteInfo.Time)
+        // Trigger highlights and sounds
+        while (NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
         {
-            if (PianoActorRef->bIsLearningMode)
-            {
-                // In learning mode, highlight the key and add it to the set of notes we are waiting for.
-                PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, 5.0f); // Use a long duration for learning
-                WaitingNotes.Add(NoteInfo.MidiNote);
-            }
-            else if (bRainMode)
+            const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
+            if (bRainMode)
             {
                 PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
             }
             else
             {
-                // In normal mode, play the note sound and animation
                 PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
             }
             NextHighlightIndex++;
         }
-        else
-        {
-            // Notes are sorted, so we can break early
-            break;
-        }
     }
-	
-    // --- 3. Update existing blocks (they move themselves now) ---
-	for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
+
+    // --- Common Logic: Garbage collect invalid blocks ---
+    for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
     {
         if (!IsValid(ActiveBlocks[i]))
         {
             ActiveBlocks.RemoveAt(i);
         }
+    }
+}
+
+void AFallingBlockManager::OnLearningModeChanged(bool bNewState)
+{
+    for (AFallingBlock* Block : ActiveBlocks)
+    {
+        if (IsValid(Block))
+        {
+            Block->SetLearningMode(bNewState);
+        }
+    }
+    // If we are exiting learning mode, clear any waiting notes
+    if (!bNewState)
+    {
+        PianoActorRef->UnhighlightKeys(WaitingNotes.Array());
+        WaitingNotes.Empty();
     }
 }
 
@@ -197,8 +212,8 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
         return; // Ignore if not in learning mode or if it's not a note we're waiting for.
     }
 
-    // The correct note was played.
     WaitingNotes.Remove(MidiNote);
+    PianoActorRef->UnhighlightKeys({MidiNote}); // Turn off highlight for the correct key
 
     // Find and destroy the corresponding waiting block.
     for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
@@ -211,22 +226,7 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
             break; 
         }
     }
-
-    // If all notes for this timestep have been played, advance the song.
-    if (WaitingNotes.IsEmpty())
-    {
-        UE_LOG(LogTemp, Log, TEXT("Learning mode: All notes played. Advancing song."));
-        if (NextHighlightIndex < ArrivalTimes.Num())
-        {
-            // Advance time to the next note event.
-            CurrentSongTime = ArrivalTimes[NextHighlightIndex].Time;
-        }
-        else
-        {
-            // End of song
-            UE_LOG(LogTemp, Log, TEXT("Learning mode: Song finished."));
-        }
-    }
+    // The Tick function will handle advancing to the next state when WaitingNotes becomes empty.
 }
 
 void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
@@ -237,32 +237,20 @@ void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
 
     if (KeyRelativeTransformPtr && KeyWidthPtr)
     {
-        // Get the current transform of the piano
         const FTransform PianoWorldTransform = PianoActorRef->GetActorTransform();
-        // Calculate the current world transform of the key
         const FTransform KeyWorldTransform = *KeyRelativeTransformPtr * PianoWorldTransform;
-
         const FVector KeyLocation = KeyWorldTransform.GetLocation();
         const FVector KeyUpVector = KeyWorldTransform.GetUnitAxis(EAxis::Z);
-
-        // The target location is offset from the key's surface along its own "up" vector.
         const FVector TargetLocation = KeyLocation + KeyUpVector * TargetZHeight;
-        // The spawn location is also offset from the key's surface along its "up" vector.
         const FVector SpawnLocation = KeyLocation + KeyUpVector * StartHeight;
-
-        // Use the key's world rotation for the block. This ensures the block is aligned with the tilted key.
         FRotator SpawnRotation = KeyWorldTransform.GetRotation().Rotator();
 
         AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
         if (NewBlock)
         {
-            // Calculate dynamic speed based on the true distance
             float Distance = FVector::Dist(SpawnLocation, TargetLocation);
             float Speed = (LookaheadTime > 0) ? Distance / LookaheadTime : 0.0f;
-
-            // The width is already scaled from PopulateKeyData
             NewBlock->Initialize(TargetLocation, Speed, NoteInfo.Duration, *KeyWidthPtr, NoteInfo.MidiNote, PianoActorRef->bIsLearningMode);
-            
             ActiveBlocks.Add(NewBlock);
         }
     }
@@ -271,7 +259,6 @@ void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
         UE_LOG(LogTemp, Warning, TEXT("FallingBlockManager: Could not find key data for MIDI note %d. Block will not be spawned."), MidiNote);
     }
 }
-
 
 void AFallingBlockManager::OnPianoKeysInitialized()
 {
@@ -289,7 +276,7 @@ void AFallingBlockManager::SetSongTime(float Time)
         if(IsValid(Block)) Block->Destroy();
     }
     ActiveBlocks.Empty();
-    WaitingNotes.Empty(); // Also clear waiting notes
+    WaitingNotes.Empty();
 
     FScopeLock Lock(&ArrivalTimesMutex);
     NextSpawnIndex = 0;
@@ -304,7 +291,6 @@ void AFallingBlockManager::SetSongTime(float Time)
         }
 		if (i == ArrivalTimes.Num() - 1)
 		{
-			// If we reached the end, set indices to the end
 			NextSpawnIndex = ArrivalTimes.Num();
 			NextHighlightIndex = ArrivalTimes.Num();
 		}
@@ -317,7 +303,7 @@ void AFallingBlockManager::StartUDPListener()
         .AsNonBlocking()
         .AsReusable()
         .BoundToPort(ListenPort)
-        .WithReceiveBufferSize(2 * 1024 * 1024); // Increased buffer size for larger MIDI files
+        .WithReceiveBufferSize(2 * 1024 * 1024);
 
     if (ListenSocket)
     {
@@ -334,7 +320,6 @@ void AFallingBlockManager::StartUDPListener()
 
 void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, const FIPv4Endpoint& Endpoint)
 {
-    // Use FUTF8ToTCHAR to safely convert a sized buffer from UTF-8 to TCHAR
     FUTF8ToTCHAR Converter(reinterpret_cast<const char*>(Data->GetData()), Data->Num());
     const FString ReceivedString(Converter.Length(), Converter.Get());
 
@@ -347,7 +332,7 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
     if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/start_song"), ESearchCase::IgnoreCase))
     {
 		UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received /start_song command. Resetting state."));
-        SetMidiData(this->ArrivalTimes); // Reset song with currently buffered notes
+        SetMidiData(this->ArrivalTimes);
         return;
     }
 
@@ -361,7 +346,6 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
 
         if (JsonObject->TryGetArrayField(TEXT("notes"), NotesJsonArray))
         {
-            // We received a full song
             for (const auto& Value : *NotesJsonArray)
             {
                 const TSharedPtr<FJsonObject>& NoteObject = Value->AsObject();
@@ -395,7 +379,6 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
     FScopeLock Lock(&ArrivalTimesMutex);
     ArrivalTimes = NewArrivalTimes;
     
-    // Sort the array by time to ensure correct processing order
     ArrivalTimes.Sort([](const FBlockSpawnInfo& A, const FBlockSpawnInfo& B) {
         return A.Time < B.Time;
     });
@@ -437,7 +420,6 @@ void AFallingBlockManager::PopulateKeyData()
 
     const FTransform PianoInverseTransform = PianoActorRef->GetActorTransform().Inverse();
     const FVector PianoScale = PianoActorRef->GetActorScale3D();
-    // We assume the keys are laid out along the Y-axis, so we use the Y-scale for the width.
     const float KeyWidthScale = PianoScale.Y;
 
     for (int32 MidiNote = 0; MidiNote < 128; ++MidiNote)
@@ -446,11 +428,8 @@ void AFallingBlockManager::PopulateKeyData()
         float KeyWidth;
         if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyWorldTransform, KeyWidth))
         {
-            // Store the transform relative to the piano
             FTransform KeyRelativeTransform = KeyWorldTransform * PianoInverseTransform;
             KeyRelativeTransforms.Add(MidiNote, KeyRelativeTransform);
-
-            // Scale the key width by the piano's scale
             KeyWidths.Add(MidiNote, KeyWidth * KeyWidthScale);
         }
     }

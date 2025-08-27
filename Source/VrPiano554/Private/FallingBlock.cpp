@@ -104,3 +104,8 @@ void AFallingBlock::ResumeBlock()
     }
 	bIsActive = true;
 }
+
+void AFallingBlock::SetLearningMode(bool bNewState)
+{
+    bIsLearningMode = bNewState;
+}

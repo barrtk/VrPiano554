@@ -25,6 +25,9 @@ public:
 	void PauseBlock();
 	void ResumeBlock();
 
+	// Sets the learning mode state for a block that is already active
+	void SetLearningMode(bool bNewState);
+
 	// The MIDI note this block corresponds to
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Block")
 	int32 MidiNote;

@@ -116,6 +116,10 @@ private:
     UFUNCTION()
     void OnNotePlayed(int32 MidiNote);
 
+    // Handles the event when the learning mode state changes
+    UFUNCTION()
+    void OnLearningModeChanged(bool bNewState);
+
     TMap<int32, FTransform> KeyRelativeTransforms;
     TMap<int32, float> KeyWidths;
 
