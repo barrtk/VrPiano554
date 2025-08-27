@@ -102,11 +102,13 @@ void AFallingBlockManager::Tick(float DeltaTime)
         return;
     }
 
-    // Handle pause state
-    bool bIsNowPaused = PianoActorRef->bIsPaused;
-    if (bIsNowPaused != bIsCurrentlyPaused)
+    // Check for pause or learning mode
+    bool bShouldBePaused = PianoActorRef->bIsPaused || PianoActorRef->bIsLearningMode;
+
+    // If the pause state changed, update all active blocks
+    if (bShouldBePaused != bIsCurrentlyPaused)
     {
-        bIsCurrentlyPaused = bIsNowPaused;
+        bIsCurrentlyPaused = bShouldBePaused;
         for (AFallingBlock* Block : ActiveBlocks)
         {
             if (IsValid(Block))

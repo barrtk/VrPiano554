@@ -1,33 +1,44 @@
-@echo off
-echo Cleaning Unreal Engine project...
+@echo OFF
 
-echo Checking for Binaries folder...
-IF EXIST "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Binaries" (
-    echo Binaries folder found. Attempting to delete...
-    rmdir /s /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Binaries"
-    IF ERRORLEVEL 1 (
-        echo ERROR: Failed to delete Binaries folder. It might be in use or permissions are insufficient.
-    ) ELSE (
-        echo Binaries folder deleted successfully.
-    )
-) ELSE (
-    echo Binaries folder not found. Skipping deletion.
+echo.
+echo ===============================================================================
+echo  CLEANING PROJECT...
+echo ===============================================================================
+echo.
+
+REM Change to the script's directory to ensure we are in the project root
+cd /D "%~dp0"
+
+REM Verify we are in the correct directory by checking for the .uproject file
+IF NOT EXIST "VrPiano554.uproject" (
+    echo ERROR: Could not find VrPiano554.uproject file.
+    echo Please run this script from the root directory of your Unreal project.
+    pause
+    exit /b 1
 )
 
-echo Deleting .vs folder...
-rmdir /s /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\.vs"
+echo Deleting generated folders...
+echo.
 
-echo Deleting Intermediate folder...
-rmdir /s /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Intermediate"
+REM List of folders to delete
+set FOLDERS_TO_DELETE=Binaries Intermediate DerivedDataCache Saved .vs
 
-echo Deleting Saved folder...
-rmdir /s /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\Saved"
+REM Loop through and delete each folder
+for %%f in (%FOLDERS_TO_DELETE%) do (
+    if exist %%f (
+        echo Deleting %%f folder...
+        rmdir /s /q %%f
+    ) else (
+        echo %%f folder not found, skipping.
+    )
+)
 
-echo Deleting VrPiano554.sln file...
-del /f /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\VrPiano554.sln"
-
-echo Deleting .vsconfig file...
-del /f /q "C:\Users\Bartek\Documents\Unreal Projects\VrPiano554\.vsconfig"
-
-echo Cleaning complete.
+echo.
+echo ===============================================================================
+echo  CLEANUP COMPLETE
+echo ===============================================================================
+echo.
+echo You can now right-click on your .uproject file and select 'Generate Visual Studio project files'.
+echo After that, open the .sln file and build the project from Visual Studio.
+echo.
 pause

@@ -37,4 +37,8 @@ private:
 
 	// Whether the block is currently moving
 	bool bIsActive;
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falling Block", meta = (AllowPrivateAccess = "true"))
+	FVector BlockScaleMultiplier;
 };

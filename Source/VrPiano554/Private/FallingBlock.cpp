@@ -11,6 +11,7 @@ AFallingBlock::AFallingBlock()
 
 	MovementSpeed = 0.0f;
 	bIsActive = false;
+	BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
 }
 
 void AFallingBlock::BeginPlay()
@@ -67,7 +68,8 @@ void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, f
 	// Calculate height (length) based on speed and note duration.
 	float ScaleZ = (MovementSpeed > 0 && InDuration > 0) ? (MovementSpeed * InDuration) / 100.0f : 0.2f;
 
-	BlockMesh->SetWorldScale3D(FVector(ScaleX, ScaleY, ScaleZ));
+	FVector FinalScale = FVector(ScaleX, ScaleY, ScaleZ) * BlockScaleMultiplier;
+	BlockMesh->SetWorldScale3D(FinalScale);
 
 	bIsActive = true;
 }
