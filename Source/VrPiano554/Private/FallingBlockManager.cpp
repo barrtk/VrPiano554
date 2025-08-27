@@ -22,6 +22,7 @@ AFallingBlockManager::AFallingBlockManager()
     VrPianoPawnRef = nullptr;
     bIsCurrentlyPaused = false;
     bRainMode = false;
+    bIsMovementPaused = false;
 }
 
 AFallingBlockManager::~AFallingBlockManager()
@@ -123,49 +124,75 @@ void AFallingBlockManager::Tick(float DeltaTime)
         }
     }
 
-    // --- Main Logic ---
-    if (PianoActorRef->bIsLearningMode)
-    {
-        // --- LEARNING MODE: Step-by-step logic ---
-        if (WaitingNotes.IsEmpty())
-        {
-            if (NextHighlightIndex < ArrivalTimes.Num())
-            {
-                const float NextEventTime = ArrivalTimes[NextHighlightIndex].Time;
-                CurrentSongTime = NextEventTime; // Set time for lookahead calculation
+    // --- Synthesia-style Learning Mode Logic ---
 
-                // Process all notes at this exact time (for chords)
-                int32 TempIndex = NextHighlightIndex;
-                while (TempIndex < ArrivalTimes.Num() && ArrivalTimes[TempIndex].Time == NextEventTime)
-                {
-                    const FBlockSpawnInfo& NoteInfo = ArrivalTimes[TempIndex];
-                    SpawnBlockForNote(NoteInfo);
-                    PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, 3600.0f); // Highlight indefinitely
-                    WaitingNotes.Add(NoteInfo.MidiNote);
-                    TempIndex++;
-                }
-                NextHighlightIndex = TempIndex;
-                NextSpawnIndex = TempIndex; // Keep spawn index in sync
+    // 1. Determine if we should wait for player input
+    bool bShouldWaitForInput = false;
+    if (PianoActorRef->bIsLearningMode && NextHighlightIndex < ArrivalTimes.Num())
+    {
+        // We wait if the next note in the sequence has reached the strike zone (CurrentSongTime)
+        if (CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
+        {
+            bShouldWaitForInput = true;
+        }
+    }
+
+    // 1a. Pause or resume block movement based on whether we are waiting for input
+    if (bShouldWaitForInput && !bIsMovementPaused)
+    {
+        // --- PAUSE all blocks ---
+        for (AFallingBlock* Block : ActiveBlocks)
+        {
+            if (IsValid(Block))
+            {
+                Block->PauseBlock();
             }
         }
-        // Else: we are waiting for player input, so do nothing.
+        bIsMovementPaused = true;
     }
-    else
+    else if (!bShouldWaitForInput && bIsMovementPaused)
     {
-        // --- NORMAL MODE: Continuous playback ---
-        CurrentSongTime += DeltaTime;
-
-        // Spawn new blocks based on lookahead time
-        while (NextSpawnIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextSpawnIndex].Time - LookaheadTime)
+        // --- RESUME all blocks ---
+        for (AFallingBlock* Block : ActiveBlocks)
         {
-            SpawnBlockForNote(ArrivalTimes[NextSpawnIndex]);
-            NextSpawnIndex++;
+            if (IsValid(Block))
+            {
+                Block->ResumeBlock();
+            }
         }
+        bIsMovementPaused = false;
+    }
 
-        // Trigger highlights and sounds
-        while (NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
+    // 2. Advance song time if we are not waiting
+    if (!bShouldWaitForInput)
+    {
+        CurrentSongTime += DeltaTime;
+    }
+
+    // 3. Spawn new blocks from the highway
+    while (NextSpawnIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextSpawnIndex].Time - LookaheadTime)
+    {
+        SpawnBlockForNote(ArrivalTimes[NextSpawnIndex]);
+        NextSpawnIndex++;
+    }
+
+    // 4. Handle notes reaching the strike zone
+    while (NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
+    {
+        const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
+
+        if (PianoActorRef->bIsLearningMode)
         {
-            const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
+            // In learning mode, add the note to the waiting list if it's not already there.
+            if (!WaitingNotes.Contains(NoteInfo.MidiNote))
+            {
+                WaitingNotes.Add(NoteInfo.MidiNote);
+                PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, 3600.0f); // Highlight indefinitely
+            }
+        }
+        else
+        {
+            // In normal mode, just play the note automatically.
             if (bRainMode)
             {
                 PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
@@ -174,8 +201,17 @@ void AFallingBlockManager::Tick(float DeltaTime)
             {
                 PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
             }
-            NextHighlightIndex++;
         }
+
+        // If we are waiting for input, we stop processing further notes in the timeline.
+        // This makes the whole chord/event active at once.
+        if (bShouldWaitForInput)
+        {
+            break;
+        }
+
+        // In normal mode, advance past the note we just handled.
+        NextHighlightIndex++;
     }
 
     // --- Common Logic: Garbage collect invalid blocks ---
@@ -190,6 +226,7 @@ void AFallingBlockManager::Tick(float DeltaTime)
 
 void AFallingBlockManager::OnLearningModeChanged(bool bNewState)
 {
+    // Update all existing blocks with the new learning mode state.
     for (AFallingBlock* Block : ActiveBlocks)
     {
         if (IsValid(Block))
@@ -197,10 +234,11 @@ void AFallingBlockManager::OnLearningModeChanged(bool bNewState)
             Block->SetLearningMode(bNewState);
         }
     }
-    // If we are exiting learning mode, clear any waiting notes
+
+    // If we are turning learning mode OFF, clear any waiting notes and highlights.
     if (!bNewState)
     {
-        PianoActorRef->UnhighlightKeys(WaitingNotes.Array());
+        if(PianoActorRef) PianoActorRef->UnhighlightKeys(WaitingNotes.Array());
         WaitingNotes.Empty();
     }
 }
@@ -226,7 +264,23 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
             break; 
         }
     }
-    // The Tick function will handle advancing to the next state when WaitingNotes becomes empty.
+
+    // After playing a note, check if we can advance the song's main index (NextHighlightIndex).
+    // We can advance if the *next* note in the sequence is no longer in our waiting set.
+    // This means we have cleared all notes for the current time step.
+    while (NextHighlightIndex < ArrivalTimes.Num())
+    {
+        const FBlockSpawnInfo& NextNoteInfo = ArrivalTimes[NextHighlightIndex];
+        if (WaitingNotes.Contains(NextNoteInfo.MidiNote))
+        {
+            // The next note in the sequence is part of the current chord and is still waiting to be played.
+            // So, we cannot advance the main index yet.
+            break;
+        }
+        // This note has been dealt with (either played or was never in the waiting set),
+        // so we can advance the index past it.
+        NextHighlightIndex++;
+    }
 }
 
 void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)

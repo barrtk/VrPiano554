@@ -129,4 +129,5 @@ private:
     bool bIsCurrentlyPaused;
     bool bHasPopulatedKeyData;
     bool bRainMode = false;
+    bool bIsMovementPaused; // Tracks if blocks are frozen for learning mode
 };
