@@ -19,11 +19,15 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	// Initializes the block's movement and appearance
-	void Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth);
+	void Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth, int32 InMidiNote, bool bInIsLearningMode);
 
 	// Pause and Resume movement
 	void PauseBlock();
 	void ResumeBlock();
+
+	// The MIDI note this block corresponds to
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Block")
+	int32 MidiNote;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
@@ -37,6 +41,9 @@ private:
 
 	// Whether the block is currently moving
 	bool bIsActive;
+
+	// True if the block should wait at the target instead of being destroyed
+	bool bIsLearningMode;
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falling Block", meta = (AllowPrivateAccess = "true"))

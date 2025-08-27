@@ -263,6 +263,7 @@ void APianoActor::ApplyCalibration()
     FRotator NewRotation = FRotationMatrix::MakeFromX(Direction).Rotator();
     FVector RotatedOffset = NewRotation.RotateVector(CalculatedOffset);
     FVector NewLocation = MidPoint - RotatedOffset;
+    NewLocation.Z -= 10.0f; // Apply the requested Z offset
     float NewScale = Distance / PianoModelWidth;
 
     UE_LOG(LogTemp, Log, TEXT("APianoActor::ApplyCalibration - New Location: %s, New Rotation: %s, New Scale: %f"), *NewLocation.ToString(), *NewRotation.ToString(), NewScale);
@@ -275,7 +276,11 @@ void APianoActor::ApplyCalibration()
 
 void APianoActor::PressKey(int32 MidiNote)
 {
-    if (KeyPivotMap.Contains(MidiNote)) ActiveKeyAnimations.Add(MidiNote, TargetRotationAngle);
+    if (KeyPivotMap.Contains(MidiNote))
+    {
+        ActiveKeyAnimations.Add(MidiNote, TargetRotationAngle);
+        OnPlayerNotePlayed.Broadcast(MidiNote);
+    }
 }
 
 void APianoActor::ReleaseKey(int32 MidiNote)

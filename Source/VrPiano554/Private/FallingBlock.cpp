@@ -12,6 +12,8 @@ AFallingBlock::AFallingBlock()
 	MovementSpeed = 0.0f;
 	bIsActive = false;
 	BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
+	MidiNote = 0;
+	bIsLearningMode = false;
 }
 
 void AFallingBlock::BeginPlay()
@@ -35,9 +37,19 @@ void AFallingBlock::Tick(float DeltaTime)
 
     if (DistanceToMove >= DistanceToTarget)
     {
-        // If we are close enough, just snap to the target and destroy
+        // If we are close enough, snap to the target
         SetActorLocation(TargetLocation);
-        Destroy();
+
+        if (bIsLearningMode)
+        {
+            // In learning mode, stop and wait for key press
+            bIsActive = false;
+        }
+        else
+        {
+            // In normal mode, destroy
+            Destroy();
+        }
     }
     else
     {
@@ -48,10 +60,12 @@ void AFallingBlock::Tick(float DeltaTime)
     }
 }
 
-void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth)
+void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth, int32 InMidiNote, bool bInIsLearningMode)
 {
 	TargetLocation = InTargetLocation;
 	MovementSpeed = InSpeed;
+	MidiNote = InMidiNote;
+	bIsLearningMode = bInIsLearningMode;
 
 	// --- Dynamic Scaling Logic ---
 	// This assumes the base mesh is a 100x100x100 unit cube.
@@ -81,5 +95,12 @@ void AFallingBlock::PauseBlock()
 
 void AFallingBlock::ResumeBlock()
 {
+    // Do not resume if we are in learning mode and waiting for a keypress
+    if (bIsLearningMode && !bIsActive)
+    {
+        // This condition means we reached the target and are waiting.
+        // A general "Resume" should not restart it.
+        return;
+    }
 	bIsActive = true;
 }

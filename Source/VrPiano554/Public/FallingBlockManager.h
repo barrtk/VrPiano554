@@ -112,8 +112,15 @@ private:
     UFUNCTION()
     void OnPianoCalibrationComplete();
 
+    // Handles the event when a note is played on the piano
+    UFUNCTION()
+    void OnNotePlayed(int32 MidiNote);
+
     TMap<int32, FTransform> KeyRelativeTransforms;
     TMap<int32, float> KeyWidths;
+
+    // Set of MIDI notes that are currently waiting for the player to press in learning mode
+    TSet<int32> WaitingNotes;
 
     bool bIsCurrentlyPaused;
     bool bHasPopulatedKeyData;

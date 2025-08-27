@@ -22,6 +22,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPauseStateChanged, bool, bNewPaus
 // Delegate for learning mode state changes
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLearningModeStateChanged, bool, bNewLearningModeState);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerNotePlayed, int32, MidiNote);
+
 // Delegates for Mute and Life Hold
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFileMuteStateChanged, bool, bNewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLiveMuteStateChanged, bool, bNewState);
@@ -178,6 +180,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Menu")
     FOnLearningModeStateChanged OnLearningModeStateChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "Piano|MIDI")
+    FOnPlayerNotePlayed OnPlayerNotePlayed;
 
     UPROPERTY(BlueprintReadWrite, Category = "Menu")
     bool bIsFileMuted;
