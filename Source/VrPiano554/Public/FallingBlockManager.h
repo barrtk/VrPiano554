@@ -112,7 +112,7 @@ private:
     UFUNCTION()
     void OnPianoCalibrationComplete();
 
-    TMap<int32, FTransform> KeyTransforms;
+    TMap<int32, FTransform> KeyRelativeTransforms;
     TMap<int32, float> KeyWidths;
 
     bool bIsCurrentlyPaused;

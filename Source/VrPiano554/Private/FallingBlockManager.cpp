@@ -179,23 +179,35 @@ void AFallingBlockManager::Tick(float DeltaTime)
 void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
 {
     const int32 MidiNote = NoteInfo.MidiNote;
-    const FTransform* KeyTransformPtr = KeyTransforms.Find(MidiNote);
+    const FTransform* KeyRelativeTransformPtr = KeyRelativeTransforms.Find(MidiNote);
     const float* KeyWidthPtr = KeyWidths.Find(MidiNote);
 
-    if (KeyTransformPtr && KeyWidthPtr)
+    if (KeyRelativeTransformPtr && KeyWidthPtr)
     {
-        FVector KeyLocation = KeyTransformPtr->GetLocation();
-        FVector SpawnLocation = FVector(KeyLocation.X, KeyLocation.Y, StartHeight);
-        FVector TargetLocation = FVector(KeyLocation.X, KeyLocation.Y, TargetZHeight);
-        FRotator SpawnRotation = PianoActorRef->GetActorRotation();
+        // Get the current transform of the piano
+        const FTransform PianoWorldTransform = PianoActorRef->GetActorTransform();
+        // Calculate the current world transform of the key
+        const FTransform KeyWorldTransform = *KeyRelativeTransformPtr * PianoWorldTransform;
+
+        const FVector KeyLocation = KeyWorldTransform.GetLocation();
+        const FVector KeyUpVector = KeyWorldTransform.GetUnitAxis(EAxis::Z);
+
+        // The target location is offset from the key's surface along its own "up" vector.
+        const FVector TargetLocation = KeyLocation + KeyUpVector * TargetZHeight;
+        // The spawn location is also offset from the key's surface along its "up" vector.
+        const FVector SpawnLocation = KeyLocation + KeyUpVector * StartHeight;
+
+        // Use the key's world rotation for the block. This ensures the block is aligned with the tilted key.
+        FRotator SpawnRotation = KeyWorldTransform.GetRotation().Rotator();
 
         AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
         if (NewBlock)
         {
-            // Calculate dynamic speed
+            // Calculate dynamic speed based on the true distance
             float Distance = FVector::Dist(SpawnLocation, TargetLocation);
             float Speed = (LookaheadTime > 0) ? Distance / LookaheadTime : 0.0f;
 
+            // The width is already scaled from PopulateKeyData
             NewBlock->Initialize(TargetLocation, Speed, NoteInfo.Duration, *KeyWidthPtr);
             
             ActiveBlocks.Add(NewBlock);
@@ -366,24 +378,27 @@ void AFallingBlockManager::PopulateKeyData()
         return;
     }
 
-    KeyTransforms.Empty();
+    KeyRelativeTransforms.Empty();
     KeyWidths.Empty();
 
-    // Get the piano's scale to correctly size the falling blocks
+    const FTransform PianoInverseTransform = PianoActorRef->GetActorTransform().Inverse();
     const FVector PianoScale = PianoActorRef->GetActorScale3D();
     // We assume the keys are laid out along the Y-axis, so we use the Y-scale for the width.
     const float KeyWidthScale = PianoScale.Y;
 
     for (int32 MidiNote = 0; MidiNote < 128; ++MidiNote)
     {
-        FTransform KeyTransform;
+        FTransform KeyWorldTransform;
         float KeyWidth;
-        if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyTransform, KeyWidth))
+        if (PianoActorRef->GetKeyTransformAndWidth(MidiNote, KeyWorldTransform, KeyWidth))
         {
-            KeyTransforms.Add(MidiNote, KeyTransform);
+            // Store the transform relative to the piano
+            FTransform KeyRelativeTransform = KeyWorldTransform * PianoInverseTransform;
+            KeyRelativeTransforms.Add(MidiNote, KeyRelativeTransform);
+
             // Scale the key width by the piano's scale
             KeyWidths.Add(MidiNote, KeyWidth * KeyWidthScale);
         }
     }
-    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Populated data for %d keys."), KeyTransforms.Num());
+    UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Populated data for %d keys."), KeyRelativeTransforms.Num());
 }
