@@ -57,9 +57,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
     void SetSongTime(float Time);
 
-    UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
-    void ToggleRainMode(bool bIsEnabled);
-
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     TSubclassOf<AFallingBlock> BlockClass;
 
@@ -72,9 +69,6 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float TargetZHeight = 50.f;
-
-    UPROPERTY(EditAnywhere, Category = "Falling Blocks", meta = (DisplayName = "Rain Mode Key Highlight Duration"))
-    float RainModeKeyHighlightDuration = 0.5f;
 
     /** Port UDP do nasłuchiwania (np. 5005) */
     UPROPERTY(EditAnywhere, Category = "Networking")
@@ -128,6 +122,5 @@ private:
 
     bool bIsCurrentlyPaused;
     bool bHasPopulatedKeyData;
-    bool bRainMode = false;
     bool bIsMovementPaused; // Tracks if blocks are frozen for learning mode
 };

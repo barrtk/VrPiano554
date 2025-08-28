@@ -70,7 +70,7 @@ APianoActor::APianoActor()
     WidgetInteractionComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
 
     bIsPaused = false;
-    bIsLearningMode = false;
+    bIsLearningMode = true;
     bIsFileMuted = false;
     bIsLiveMuted = false;
     bIsLifeHoldActive = false;

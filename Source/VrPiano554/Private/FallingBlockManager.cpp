@@ -21,7 +21,6 @@ AFallingBlockManager::AFallingBlockManager()
     PianoActorRef = nullptr;
     VrPianoPawnRef = nullptr;
     bIsCurrentlyPaused = false;
-    bRainMode = false;
     bIsMovementPaused = false;
 }
 
@@ -105,13 +104,16 @@ void AFallingBlockManager::Tick(float DeltaTime)
         return;
     }
 
+    // Determine if we need to wait for player input for the learning mode.
+    const bool bShouldWaitForInput = PianoActorRef->bIsLearningMode && NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time;
+
     // Handle general pause
     if (PianoActorRef->bIsPaused)
     {
         if (!bIsCurrentlyPaused)
         {
             bIsCurrentlyPaused = true;
-            for (AFallingBlock* Block : ActiveBlocks) { if(IsValid(Block)) Block->PauseBlock(); }
+            for (AFallingBlock* Block : ActiveBlocks) { if (IsValid(Block)) Block->PauseBlock(); }
         }
         return; // A hard pause stops everything.
     }
@@ -120,22 +122,15 @@ void AFallingBlockManager::Tick(float DeltaTime)
         if (bIsCurrentlyPaused)
         {
             bIsCurrentlyPaused = false;
-            for (AFallingBlock* Block : ActiveBlocks) { if(IsValid(Block)) Block->ResumeBlock(); }
+            // When unpausing, only resume blocks if the learning mode isn't waiting for input.
+            if (!bShouldWaitForInput)
+            {
+                for (AFallingBlock* Block : ActiveBlocks) { if (IsValid(Block)) Block->ResumeBlock(); }
+            }
         }
     }
 
     // --- Synthesia-style Learning Mode Logic ---
-
-    // 1. Determine if we should wait for player input
-    bool bShouldWaitForInput = false;
-    if (PianoActorRef->bIsLearningMode && NextHighlightIndex < ArrivalTimes.Num())
-    {
-        // We wait if the next note in the sequence has reached the strike zone (CurrentSongTime)
-        if (CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
-        {
-            bShouldWaitForInput = true;
-        }
-    }
 
     // 1a. Pause or resume block movement based on whether we are waiting for input
     if (bShouldWaitForInput && !bIsMovementPaused)
@@ -193,25 +188,20 @@ void AFallingBlockManager::Tick(float DeltaTime)
         else
         {
             // In normal mode, just play the note automatically.
-            if (bRainMode)
-            {
-                PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, RainModeKeyHighlightDuration);
-            }
-            else
-            {
-                PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
-            }
+            PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
         }
 
-        // If we are waiting for input, we stop processing further notes in the timeline.
-        // This makes the whole chord/event active at once.
+        // If we are waiting for input, stop processing more notes this frame and wait.
+        // The NextHighlightIndex is NOT incremented, so we are stuck on this note.
         if (bShouldWaitForInput)
         {
             break;
         }
-
-        // In normal mode, advance past the note we just handled.
-        NextHighlightIndex++;
+        else
+        {
+            // If not waiting, it's normal mode. Process the note and move to the next one.
+            NextHighlightIndex++;
+        }
     }
 
     // --- Common Logic: Garbage collect invalid blocks ---
@@ -377,12 +367,6 @@ void AFallingBlockManager::OnUDPMessageReceived(const FArrayReaderPtr& Data, con
     FUTF8ToTCHAR Converter(reinterpret_cast<const char*>(Data->GetData()), Data->Num());
     const FString ReceivedString(Converter.Length(), Converter.Get());
 
-    if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/rain"), ESearchCase::IgnoreCase))
-    {
-        ToggleRainMode(!bRainMode);
-        return;
-    }
-	
     if (ReceivedString.TrimStartAndEnd().Equals(TEXT("/start_song"), ESearchCase::IgnoreCase))
     {
 		UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: Received /start_song command. Resetting state."));
@@ -448,17 +432,6 @@ void AFallingBlockManager::SetMidiData(const TArray<FBlockSpawnInfo>& NewArrival
     CurrentSongTime = 0.0f;
 	
 	UE_LOG(LogTemp, Log, TEXT("FallingBlockManager: MIDI data set and sorted. Ready to play."));
-}
-
-void AFallingBlockManager::ToggleRainMode(bool bIsEnabled)
-{
-    bRainMode = bIsEnabled;
-    FString Status = bRainMode ? TEXT("ENABLED") : TEXT("DISABLED");
-    UE_LOG(LogTemp, Warning, TEXT("Rain Mode has been %s"), *Status);
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("Rain Mode: %s"), *Status));
-    }
 }
 
 void AFallingBlockManager::PopulateKeyData()

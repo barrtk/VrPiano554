@@ -62,7 +62,6 @@ void AFallingBlock::Tick(float DeltaTime)
 
 void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth, int32 InMidiNote, bool bInIsLearningMode)
 {
-	TargetLocation = InTargetLocation;
 	MovementSpeed = InSpeed;
 	MidiNote = InMidiNote;
 	bIsLearningMode = bInIsLearningMode;
@@ -84,6 +83,13 @@ void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, f
 
 	FVector FinalScale = FVector(ScaleX, ScaleY, ScaleZ) * BlockScaleMultiplier;
 	BlockMesh->SetWorldScale3D(FinalScale);
+
+	// Adjust the target location to account for the block's height.
+	// The initial InTargetLocation is where the BOTTOM of the block should be.
+	// Since the actor's origin is its center, we need to offset the target by half the block's height.
+	const float HalfHeight = 50.0f * FinalScale.Z; // Base mesh is 100 units high (50 units from center to edge)
+	const FVector UpVector = GetActorUpVector(); // The block is spawned with the key's rotation
+	TargetLocation = InTargetLocation + (UpVector * HalfHeight);
 
 	bIsActive = true;
 }
