@@ -72,7 +72,8 @@ void AFallingBlock::Tick(float DeltaTime)
 
     const float CurrentMasterTime = Manager->GetCurrentSongTime();
 
-    if (CurrentMasterTime >= TargetTime)
+    // Check if we have reached or passed the target time, with a small tolerance for floating point errors.
+    if (CurrentMasterTime >= TargetTime || FMath::IsNearlyEqual(CurrentMasterTime, TargetTime))
     {
         // We've reached or passed the target time. Snap to the final location and stop ticking.
         SetActorLocation(FinalTargetLocation);
