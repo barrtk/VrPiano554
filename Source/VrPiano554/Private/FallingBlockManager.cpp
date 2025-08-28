@@ -284,7 +284,10 @@ void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
         const FVector SpawnLocation = KeyLocation + KeyUpVector * StartHeight;
         FRotator SpawnRotation = KeyWorldTransform.GetRotation().Rotator();
 
-        AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation);
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation, SpawnParams);
         if (NewBlock)
         {
             float Distance = FVector::Dist(SpawnLocation, TargetLocation);
