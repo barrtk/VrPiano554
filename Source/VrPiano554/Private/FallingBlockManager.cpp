@@ -178,28 +178,25 @@ void AFallingBlockManager::Tick(float DeltaTime)
 
         if (PianoActorRef->bIsLearningMode)
         {
-            // In learning mode, add the note to the waiting list if it's not already there.
-            if (!WaitingNotes.Contains(NoteInfo.MidiNote))
+            // In learning mode, add all notes for this time step to the waiting list.
+            const float WaitTime = NoteInfo.Time;
+            int32 TempIndex = NextHighlightIndex;
+            while (TempIndex < ArrivalTimes.Num() && ArrivalTimes[TempIndex].Time <= WaitTime)
             {
-                WaitingNotes.Add(NoteInfo.MidiNote);
-                PianoActorRef->HighlightKeyForDuration(NoteInfo.MidiNote, 3600.0f); // Highlight indefinitely
+                const FBlockSpawnInfo& ChordNoteInfo = ArrivalTimes[TempIndex];
+                if (!WaitingNotes.Contains(ChordNoteInfo.MidiNote))
+                {
+                    WaitingNotes.Add(ChordNoteInfo.MidiNote);
+                    PianoActorRef->HighlightKeyForDuration(ChordNoteInfo.MidiNote, 3600.0f);
+                }
+                TempIndex++;
             }
-        }
-        else
-        {
-            // In normal mode, just play the note automatically.
-            PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
-        }
-
-        // If we are waiting for input, stop processing more notes this frame and wait.
-        // The NextHighlightIndex is NOT incremented, so we are stuck on this note.
-        if (bShouldWaitForInput)
-        {
+            // After adding all notes for this chord/time step, break the main loop and wait.
             break;
         }
-        else
+        else // Normal Mode
         {
-            // If not waiting, it's normal mode. Process the note and move to the next one.
+            PianoActorRef->PlayNote(NoteInfo.MidiNote, true);
             NextHighlightIndex++;
         }
     }
@@ -237,13 +234,15 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
 {
     if (!PianoActorRef->bIsLearningMode || !WaitingNotes.Contains(MidiNote))
     {
-        return; // Ignore if not in learning mode or if it's not a note we're waiting for.
+        return;
     }
 
     WaitingNotes.Remove(MidiNote);
-    PianoActorRef->UnhighlightKeys({MidiNote}); // Turn off highlight for the correct key
+    PianoActorRef->UnhighlightKeys({MidiNote});
 
-    // Find and destroy the corresponding waiting block.
+    // Destroy ALL corresponding waiting blocks for this note.
+    // We iterate backwards because we are removing items from the array.
+    // We do not break, to ensure any duplicates are also cleaned up.
     for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
     {
         AFallingBlock* Block = ActiveBlocks[i];
@@ -251,25 +250,21 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
         {
             Block->Destroy();
             ActiveBlocks.RemoveAt(i);
-            break; 
         }
     }
 
-    // After playing a note, check if we can advance the song's main index (NextHighlightIndex).
-    // We can advance if the *next* note in the sequence is no longer in our waiting set.
-    // This means we have cleared all notes for the current time step.
-    while (NextHighlightIndex < ArrivalTimes.Num())
+    // Check if we are done waiting for all notes in the current time step.
+    if (WaitingNotes.IsEmpty())
     {
-        const FBlockSpawnInfo& NextNoteInfo = ArrivalTimes[NextHighlightIndex];
-        if (WaitingNotes.Contains(NextNoteInfo.MidiNote))
+        // If so, advance the main index past the note(s) we were just waiting for.
+        if (NextHighlightIndex < ArrivalTimes.Num())
         {
-            // The next note in the sequence is part of the current chord and is still waiting to be played.
-            // So, we cannot advance the main index yet.
-            break;
+            const float FinishedTime = ArrivalTimes[NextHighlightIndex].Time;
+            while (NextHighlightIndex < ArrivalTimes.Num() && ArrivalTimes[NextHighlightIndex].Time <= FinishedTime)
+            {
+                NextHighlightIndex++;
+            }
         }
-        // This note has been dealt with (either played or was never in the waiting set),
-        // so we can advance the index past it.
-        NextHighlightIndex++;
     }
 }
 

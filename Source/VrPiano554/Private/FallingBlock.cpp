@@ -101,13 +101,6 @@ void AFallingBlock::PauseBlock()
 
 void AFallingBlock::ResumeBlock()
 {
-    // Do not resume if we are in learning mode and waiting for a keypress
-    if (bIsLearningMode && !bIsActive)
-    {
-        // This condition means we reached the target and are waiting.
-        // A general "Resume" should not restart it.
-        return;
-    }
 	bIsActive = true;
 }
 
