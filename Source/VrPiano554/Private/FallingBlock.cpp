@@ -1,6 +1,7 @@
 #include "FallingBlock.h"
+#include "FallingBlockManager.h" // Include the manager header
 #include "Components/StaticMeshComponent.h"
-#include "Math/UnrealMathUtility.h"
+#include "Kismet/KismetMathLibrary.h"
 
 AFallingBlock::AFallingBlock()
 {
@@ -9,11 +10,12 @@ AFallingBlock::AFallingBlock()
 	BlockMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockMesh"));
 	RootComponent = BlockMesh;
 
-	MovementSpeed = 0.0f;
-	bIsActive = false;
-	BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
 	MidiNote = 0;
-	bIsLearningMode = false;
+    Manager = nullptr;
+    StartTime = 0.0f;
+    TargetTime = 0.0f;
+    bHasReachedTarget = false;
+    BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
 }
 
 void AFallingBlock::BeginPlay()
@@ -21,90 +23,67 @@ void AFallingBlock::BeginPlay()
 	Super::BeginPlay();
 }
 
-void AFallingBlock::Tick(float DeltaTime)
+void AFallingBlock::Initialize(AFallingBlockManager* InManager, const FVector& InSpawnLocation, const FVector& InTargetLocation, float InTargetTime, float InDuration, float InKeyWidth, int32 InMidiNote)
 {
-	Super::Tick(DeltaTime);
+    Manager = InManager;
+    SpawnLocation = InSpawnLocation;
+    FinalTargetLocation = InTargetLocation;
+    TargetTime = InTargetTime;
+    MidiNote = InMidiNote;
+    bHasReachedTarget = false;
 
-	if (!bIsActive)
-	{
-		return;
-	}
-
-	// Move towards the target with constant speed using manual vector math
-	FVector CurrentLocation = GetActorLocation();
-    float DistanceToTarget = FVector::Dist(CurrentLocation, TargetLocation);
-    float DistanceToMove = MovementSpeed * DeltaTime;
-
-    if (DistanceToMove >= DistanceToTarget)
+    // The block starts falling LookaheadTime seconds before its target time.
+    if(Manager)
     {
-        // If we are close enough, snap to the target
-        SetActorLocation(TargetLocation);
-
-        if (bIsLearningMode)
-        {
-            // In learning mode, stop and wait for key press
-            bIsActive = false;
-        }
-        else
-        {
-            // In normal mode, destroy
-            Destroy();
-        }
+        StartTime = TargetTime - Manager->LookaheadTime;
     }
-    else
+
+    // --- Dynamic Scaling Logic ---
+    // We need to calculate the visual speed to determine the block's length.
+    const float Distance = FVector::Dist(SpawnLocation, FinalTargetLocation);
+    float VisualSpeed = 0.0f;
+    if(Manager && Manager->LookaheadTime > 0)
     {
-        // Otherwise, move along the direction vector
-        FVector Direction = (TargetLocation - CurrentLocation).GetSafeNormal();
-        FVector NewLocation = CurrentLocation + Direction * DistanceToMove;
-        SetActorLocation(NewLocation);
+        VisualSpeed = Distance / Manager->LookaheadTime;
     }
-}
 
-void AFallingBlock::Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth, int32 InMidiNote, bool bInIsLearningMode)
-{
-	MovementSpeed = InSpeed;
-	MidiNote = InMidiNote;
-	bIsLearningMode = bInIsLearningMode;
-
-	// --- Dynamic Scaling Logic ---
-	// This assumes the base mesh is a 100x100x100 unit cube.
-	// Axis mapping assumption: X=Depth, Y=Width, Z=Height/Length
-
-	// Set a fixed, small depth for the block to make it appear flat.
-	float ScaleX = 0.08f; // e.g., 8 units deep
-
-	// Calculate width based on the key's width.
-	// A small margin is subtracted for better visual separation between adjacent blocks.
+	float ScaleX = 0.08f;
 	float Margin = 1.0f;
 	float ScaleY = (InKeyWidth > Margin) ? (InKeyWidth - Margin) / 100.0f : 0.1f;
-
-	// Calculate height (length) based on speed and note duration.
-	float ScaleZ = (MovementSpeed > 0 && InDuration > 0) ? (MovementSpeed * InDuration) / 100.0f : 0.2f;
+	float ScaleZ = (VisualSpeed > 0 && InDuration > 0) ? (VisualSpeed * InDuration) / 100.0f : 0.2f;
 
 	FVector FinalScale = FVector(ScaleX, ScaleY, ScaleZ) * BlockScaleMultiplier;
 	BlockMesh->SetWorldScale3D(FinalScale);
 
-	// Adjust the target location to account for the block's height.
-	// The initial InTargetLocation is where the BOTTOM of the block should be.
-	// Since the actor's origin is its center, we need to offset the target by half the block's height.
-	const float HalfHeight = 50.0f * FinalScale.Z; // Base mesh is 100 units high (50 units from center to edge)
-	const FVector UpVector = GetActorUpVector(); // The block is spawned with the key's rotation
-	TargetLocation = InTargetLocation + (UpVector * HalfHeight);
-
-	bIsActive = true;
+    // Adjust the target location to account for the block's height so it stops at its edge.
+	const float HalfHeight = 50.0f * FinalScale.Z;
+	const FVector UpVector = GetActorUpVector();
+	FinalTargetLocation += (UpVector * HalfHeight);
 }
 
-void AFallingBlock::PauseBlock()
+void AFallingBlock::Tick(float DeltaTime)
 {
-	bIsActive = false;
-}
+	Super::Tick(DeltaTime);
 
-void AFallingBlock::ResumeBlock()
-{
-	bIsActive = true;
-}
+	if (!Manager || bHasReachedTarget)
+	{
+		return;
+	}
 
-void AFallingBlock::SetLearningMode(bool bNewState)
-{
-    bIsLearningMode = bNewState;
+    const float CurrentMasterTime = Manager->GetCurrentSongTime();
+
+    if (CurrentMasterTime >= TargetTime)
+    {
+        // We've reached or passed the target time. Snap to the final location and stop ticking.
+        SetActorLocation(FinalTargetLocation);
+        bHasReachedTarget = true;
+    }
+    else if (CurrentMasterTime >= StartTime)
+    {
+        // We are in the falling phase. Calculate position based on time.
+        const float Alpha = UKismetMathLibrary::MapRangeClamped(CurrentMasterTime, StartTime, TargetTime, 0.0f, 1.0f);
+        const FVector NewLocation = FMath::Lerp(SpawnLocation, FinalTargetLocation, Alpha);
+        SetActorLocation(NewLocation);
+    }
+    // If CurrentMasterTime < StartTime, do nothing. The block waits "off-screen" until it's time to fall.
 }

@@ -55,6 +55,9 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
+    float GetCurrentSongTime() const { return CurrentSongTime; }
+
+    UFUNCTION(BlueprintCallable, Category = "Falling Blocks")
     void SetSongTime(float Time);
 
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")

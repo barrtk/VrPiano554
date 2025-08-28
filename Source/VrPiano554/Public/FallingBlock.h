@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "FallingBlock.generated.h"
 
+class AFallingBlockManager; // Forward declaration
+
 UCLASS()
 class VRPIANO554_API AFallingBlock : public AActor
 {
@@ -19,14 +21,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	// Initializes the block's movement and appearance
-	void Initialize(const FVector& InTargetLocation, float InSpeed, float InDuration, float InKeyWidth, int32 InMidiNote, bool bInIsLearningMode);
-
-	// Pause and Resume movement
-	void PauseBlock();
-	void ResumeBlock();
-
-	// Sets the learning mode state for a block that is already active
-	void SetLearningMode(bool bNewState);
+	void Initialize(AFallingBlockManager* InManager, const FVector& InSpawnLocation, const FVector& InTargetLocation, float InTargetTime, float InDuration, float InKeyWidth, int32 InMidiNote);
 
 	// The MIDI note this block corresponds to
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Falling Block")
@@ -36,17 +31,20 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UStaticMeshComponent* BlockMesh;
 
-	// Target location for the block to reach
-	FVector TargetLocation;
+	// Pointer to the manager to get the master song time
+	UPROPERTY()
+	AFallingBlockManager* Manager;
 
-	// Speed at which the block moves
-	float MovementSpeed;
+	// The start and end points of the fall
+	FVector SpawnLocation;
+	FVector FinalTargetLocation;
 
-	// Whether the block is currently moving
-	bool bIsActive;
+	// The start and end times of the fall, based on the song's timeline
+	float StartTime;
+	float TargetTime;
 
-	// True if the block should wait at the target instead of being destroyed
-	bool bIsLearningMode;
+	// Whether the block has reached its destination and should stop ticking
+	bool bHasReachedTarget;
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falling Block", meta = (AllowPrivateAccess = "true"))

@@ -21,7 +21,7 @@ AFallingBlockManager::AFallingBlockManager()
     PianoActorRef = nullptr;
     VrPianoPawnRef = nullptr;
     bIsCurrentlyPaused = false;
-    bIsMovementPaused = false;
+    // bIsMovementPaused is no longer needed
 }
 
 AFallingBlockManager::~AFallingBlockManager()
@@ -104,74 +104,29 @@ void AFallingBlockManager::Tick(float DeltaTime)
         return;
     }
 
-    // Determine if we need to wait for player input for the learning mode.
+    // Determine if we should wait for player input for the learning mode.
     const bool bShouldWaitForInput = PianoActorRef->bIsLearningMode && NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time;
 
-    // Handle general pause
+    // Handle general pause from the menu
     if (PianoActorRef->bIsPaused)
     {
-        if (!bIsCurrentlyPaused)
-        {
-            bIsCurrentlyPaused = true;
-            for (AFallingBlock* Block : ActiveBlocks) { if (IsValid(Block)) Block->PauseBlock(); }
-        }
-        return; // A hard pause stops everything.
-    }
-    else
-    {
-        if (bIsCurrentlyPaused)
-        {
-            bIsCurrentlyPaused = false;
-            // When unpausing, only resume blocks if the learning mode isn't waiting for input.
-            if (!bShouldWaitForInput)
-            {
-                for (AFallingBlock* Block : ActiveBlocks) { if (IsValid(Block)) Block->ResumeBlock(); }
-            }
-        }
+        return; // Simply stop processing, time won't advance and blocks are stateless.
     }
 
-    // --- Synthesia-style Learning Mode Logic ---
-
-    // 1a. Pause or resume block movement based on whether we are waiting for input
-    if (bShouldWaitForInput && !bIsMovementPaused)
-    {
-        // --- PAUSE all blocks ---
-        for (AFallingBlock* Block : ActiveBlocks)
-        {
-            if (IsValid(Block))
-            {
-                Block->PauseBlock();
-            }
-        }
-        bIsMovementPaused = true;
-    }
-    else if (!bShouldWaitForInput && bIsMovementPaused)
-    {
-        // --- RESUME all blocks ---
-        for (AFallingBlock* Block : ActiveBlocks)
-        {
-            if (IsValid(Block))
-            {
-                Block->ResumeBlock();
-            }
-        }
-        bIsMovementPaused = false;
-    }
-
-    // 2. Advance song time if we are not waiting
+    // Advance song time if we are not in a waiting state (either by learning mode or general pause).
     if (!bShouldWaitForInput)
     {
         CurrentSongTime += DeltaTime;
     }
 
-    // 3. Spawn new blocks from the highway
+    // Spawn new blocks from the highway
     while (NextSpawnIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextSpawnIndex].Time - LookaheadTime)
     {
         SpawnBlockForNote(ArrivalTimes[NextSpawnIndex]);
         NextSpawnIndex++;
     }
 
-    // 4. Handle notes reaching the strike zone
+    // Handle notes reaching the strike zone
     while (NextHighlightIndex < ArrivalTimes.Num() && CurrentSongTime >= ArrivalTimes[NextHighlightIndex].Time)
     {
         const FBlockSpawnInfo& NoteInfo = ArrivalTimes[NextHighlightIndex];
@@ -201,7 +156,7 @@ void AFallingBlockManager::Tick(float DeltaTime)
         }
     }
 
-    // --- Common Logic: Garbage collect invalid blocks ---
+    // Garbage collect invalid blocks (e.g., those destroyed in OnNotePlayed)
     for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
     {
         if (!IsValid(ActiveBlocks[i]))
@@ -213,16 +168,8 @@ void AFallingBlockManager::Tick(float DeltaTime)
 
 void AFallingBlockManager::OnLearningModeChanged(bool bNewState)
 {
-    // Update all existing blocks with the new learning mode state.
-    for (AFallingBlock* Block : ActiveBlocks)
-    {
-        if (IsValid(Block))
-        {
-            Block->SetLearningMode(bNewState);
-        }
-    }
-
-    // If we are turning learning mode OFF, clear any waiting notes and highlights.
+    // This function is now simpler as blocks don't need individual state changes.
+    // We just need to clear waiting notes if learning mode is turned off.
     if (!bNewState)
     {
         if(PianoActorRef) PianoActorRef->UnhighlightKeys(WaitingNotes.Array());
@@ -290,9 +237,8 @@ void AFallingBlockManager::SpawnBlockForNote(const FBlockSpawnInfo& NoteInfo)
         AFallingBlock* NewBlock = GetWorld()->SpawnActor<AFallingBlock>(BlockClass, SpawnLocation, SpawnRotation, SpawnParams);
         if (NewBlock)
         {
-            float Distance = FVector::Dist(SpawnLocation, TargetLocation);
-            float Speed = (LookaheadTime > 0) ? Distance / LookaheadTime : 0.0f;
-            NewBlock->Initialize(TargetLocation, Speed, NoteInfo.Duration, *KeyWidthPtr, NoteInfo.MidiNote, PianoActorRef->bIsLearningMode);
+            // Initialize the block with all info needed to be self-sufficient
+            NewBlock->Initialize(this, SpawnLocation, TargetLocation, NoteInfo.Time, NoteInfo.Duration, *KeyWidthPtr, NoteInfo.MidiNote);
             ActiveBlocks.Add(NewBlock);
         }
     }
