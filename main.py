@@ -134,6 +134,7 @@ note_off_timers = []
 was_playing = False
 live_hold_mode = False
 loop_midi = False
+live_note_duration = 1.0 # Duration in seconds for live notes to ring out
 
 # --- NEW: Wait-for-key-press (Practice Mode) ---
 wait_for_key_mode = False
@@ -255,7 +256,6 @@ def send_full_song_data(file_path):
 
     except Exception as e:
         print(f"ERROR: Could not parse or send full song data: {e}")
-
 
 # ---------- MIDI FILE PLAYBACK ----------
 def play_midi_file_prettymidi(file_path):
@@ -399,7 +399,7 @@ def restart_file_playback():
 
 # ---------- LIVE MIDI INPUT ----------
 def live_midi_thread(preferred_port_substr="Arturia"):
-    global muted_all, muted_live, log_live, stop_event, wait_for_key_mode, notes_to_wait_for, key_pressed_event
+    global muted_all, muted_live, log_live, stop_event, wait_for_key_mode, notes_to_wait_for, key_pressed_event, live_note_duration, note_off_timers
     try:
         input_ports = mido.get_input_names()
     except Exception as e:
@@ -450,7 +450,10 @@ def live_midi_thread(preferred_port_substr="Arturia"):
                     play_sound(msg.note, source="live")
                 elif is_note_off:
                     send_midi_message("note_off", msg.note, source="live")
-                    # stop_sound(msg.note, source="live") # Removed to allow live notes to ring out
+                    with state_lock:
+                        timer = threading.Timer(live_note_duration, lambda n=msg.note: stop_sound(n, source="live", force=True))
+                        note_off_timers.append(timer)
+                        timer.start()
     except Exception as e:
         print(f"[LiveMIDI] Exception in MIDI input thread: {e}")
 
@@ -482,7 +485,7 @@ def load_position():
 
 # ---------- UDP Command Receiver ----------
 def udp_receiver_thread():
-    global muted_all, muted_live, muted_parser, is_paused, live_hold_mode, speed_factor, wait_for_key_mode, loop_midi
+    global muted_all, muted_live, muted_parser, is_paused, live_hold_mode, speed_factor, wait_for_key_mode, loop_midi, live_note_duration
     print(f"Listening for commands on UDP {UDP_IP_RECEIVE}:{UDP_PORT_RECEIVE}")
     while not stop_event.is_set():
         try:
@@ -524,13 +527,13 @@ def udp_receiver_thread():
                 with state_lock:
                     is_paused = not is_paused
                     send_ui_update({"command": "toggle_pause", "is_paused": is_paused})  # Notify Unreal
-                print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
+                print(f"Pauza: {is_paused and 'włączona' or 'wyłączona'}")
             elif command == "tryb_nauki":
                 with state_lock:
                     old_wait_for_key_mode = wait_for_key_mode
                     wait_for_key_mode = not wait_for_key_mode
                     key_pressed_event.set()
-                print(f"Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
+                print(f"Tryb nauki: {wait_for_key_mode and 'WŁĄCZONY' or 'WYŁĄCZONY'}")
                 if not wait_for_key_mode and old_wait_for_key_mode:
                     print("Exiting learning mode: Stopping all active sounds.")
                     for note in list(active_channels.keys()):
@@ -538,7 +541,7 @@ def udp_receiver_thread():
             elif command == "life_hold":
                 with state_lock:
                     live_hold_mode = not live_hold_mode
-                print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
+                print(f"LIVE hold: {live_hold_mode and 'włączone' or 'wyłączone'}")
             elif command == "midi_wolniej":
                 with state_lock:
                     speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
@@ -552,11 +555,11 @@ def udp_receiver_thread():
             elif command == "mute_file":
                 with state_lock:
                     muted_parser = not muted_parser
-                print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
+                print(f"Plik MIDI: {muted_parser and 'wyciszony' or 'odtwarzany'}")
             elif command == "mute_live":
                 with state_lock:
                     muted_live = not muted_live
-                print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
+                print(f"Live MIDI: {muted_live and 'wyciszone' or 'odtwarzane'}")
             elif command == "unmute_all":
                 with state_lock:
                     muted_all = False
@@ -567,7 +570,17 @@ def udp_receiver_thread():
                 with state_lock:
                     loop_midi = not loop_midi
                 send_ui_update({"command": "update_button_state", "button": "toggle_loop", "is_active": loop_midi})
-                print(f"Looping MIDI {'włączone' if loop_midi else 'wyłączone'}.")
+                print(f"Looping MIDI: {loop_midi and 'włączone' or 'wyłączone'}")
+            elif command == "live_duration_up":
+                with state_lock:
+                    live_note_duration = round(min(live_note_duration + 0.1, 5.0), 2)
+                send_ui_update({"command": "update_live_duration", "duration": live_note_duration})
+                print(f"Live note duration set to: {live_note_duration}s")
+            elif command == "live_duration_down":
+                with state_lock:
+                    live_note_duration = round(max(live_note_duration - 0.1, 0.1), 2)
+                send_ui_update({"command": "update_live_duration", "duration": live_note_duration})
+                print(f"Live note duration set to: {live_note_duration}s")
             elif command == "toggle_file_animation_mute":
                 print("Received toggle_file_animation_mute command from Unreal.")
 
@@ -579,7 +592,7 @@ def udp_receiver_thread():
 
 # ---------- Control / Command Loop ----------
 def main_loop():
-    global muted_all, muted_live, muted_parser, is_paused, volume, stop_event, was_playing, live_hold_mode, speed_factor, wait_for_key_mode
+    global muted_all, muted_live, muted_parser, is_paused, volume, stop_event, was_playing, live_hold_mode, speed_factor, wait_for_key_mode, live_note_duration
 
     print("Komendy:\n" 
           " s - start/restart file MIDI playback\n" 
@@ -595,6 +608,8 @@ def main_loop():
           " h - toggle LIVE hold\n" 
           " . - przyspiesz o 5%\n" 
           " , - zwolnij o 5%\n" 
+          " ] - wydłuż czas trwania nuty live o 0.1s\n" 
+          " [ - skróć czas trwania nuty live o 0.1s\n" 
           " q - quit\n")
     
     update_midi_files()
@@ -632,15 +647,15 @@ def main_loop():
             with state_lock:
                 wait_for_key_mode = not wait_for_key_mode
                 key_pressed_event.set()
-            print(f"[PRACTICE] Tryb nauki {'WŁĄCZONY' if wait_for_key_mode else 'WYŁĄCZONY'}")
+            print(f"[PRACTICE] Tryb nauki: {wait_for_key_mode and 'WŁĄCZONY' or 'WYŁĄCZONY'}")
         elif cmd == "f":
             with state_lock:
                 muted_parser = not muted_parser
-            print(f"Plik MIDI {'wyciszony' if muted_parser else 'odtwarzany'}.")
+            print(f"Plik MIDI: {muted_parser and 'wyciszony' or 'odtwarzany'}")
         elif cmd == "v":
             with state_lock:
                 muted_live = not muted_live
-            print(f"Live MIDI {'wyciszone' if muted_live else 'odtwarzane'}.")
+            print(f"Live MIDI: {muted_live and 'wyciszone' or 'odtwarzane'}")
         elif cmd == "m":
             with state_lock:
                 muted_all = not muted_all
@@ -654,11 +669,11 @@ def main_loop():
             with state_lock:
                 is_paused = not is_paused
                 send_ui_update({"command": "toggle_pause", "is_paused": is_paused})
-            print(f"Pauza {'włączona' if is_paused else 'wyłączona'}.")
+            print(f"Pauza: {is_paused and 'włączona' or 'wyłączona'}")
         elif cmd == "h":
             with state_lock:
                 live_hold_mode = not live_hold_mode
-            print(f"LIVE hold {'włączone' if live_hold_mode else 'wyłączone'}.")
+            print(f"LIVE hold: {live_hold_mode and 'włączone' or 'wyłączone'}")
         elif cmd == ".":
             with state_lock:
                 speed_factor = round(min(speed_factor + 0.05, 4.0), 2)
@@ -669,6 +684,16 @@ def main_loop():
                 speed_factor = round(max(speed_factor - 0.05, 0.1), 2)
                 send_ui_update({"command": "update_tempo", "tempo": int(speed_factor * 100)})
             print(f"[SPEED] Prędkość odtwarzania: {int(speed_factor * 100)}%")
+        elif cmd == "]":
+            with state_lock:
+                live_note_duration = round(min(live_note_duration + 0.1, 5.0), 2)
+            send_ui_update({"command": "update_live_duration", "duration": live_note_duration})
+            print(f"Live note duration set to: {live_note_duration}s")
+        elif cmd == "[":
+            with state_lock:
+                live_note_duration = round(max(live_note_duration - 0.1, 0.1), 2)
+            send_ui_update({"command": "update_live_duration", "duration": live_note_duration})
+            print(f"Live note duration set to: {live_note_duration}s")
         else:
             print(f"Nieznana komenda: {cmd}")
 
