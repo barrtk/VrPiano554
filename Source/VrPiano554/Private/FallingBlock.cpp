@@ -13,6 +13,7 @@ AFallingBlock::AFallingBlock()
     Manager = nullptr;
     TargetTime = 0.0f;
 	BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
+	HalfHeight = 0.0f;
 }
 
 void AFallingBlock::BeginPlay()
@@ -43,6 +44,10 @@ void AFallingBlock::Initialize(AFallingBlockManager* InManager, float InTargetTi
 
 	FVector FinalScale = FVector(ScaleX, ScaleY, FMath::Max(ScaleZ, 0.01f)) * BlockScaleMultiplier;
 	BlockMesh->SetWorldScale3D(FinalScale);
+
+	// Calculate and store half of the block's height for positioning.
+	// The mesh is 100 units tall by default.
+	HalfHeight = 50.0f * FinalScale.Z;
 }
 
 void AFallingBlock::Tick(float DeltaTime)
@@ -68,7 +73,8 @@ void AFallingBlock::Tick(float DeltaTime)
 	const float TimeDiff = TargetTime - CurrentMasterTime;
 	const float ZOffset = TimeDiff * Manager->UnitsPerSecond;
 
-	// The final position is the key's base location plus the calculated Z offset.
-	const FVector NewLocation = TargetKeyLocation + (TargetKeyUpVector * ZOffset);
+	// The final position is the key's base location plus the calculated Z offset, adjusted by half the block's height
+	// so that its leading edge (bottom) aligns with the key.
+	const FVector NewLocation = TargetKeyLocation + (TargetKeyUpVector * (ZOffset + HalfHeight));
 	SetActorLocation(NewLocation);
 }

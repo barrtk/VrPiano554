@@ -450,7 +450,7 @@ def live_midi_thread(preferred_port_substr="Arturia"):
                     play_sound(msg.note, source="live")
                 elif is_note_off:
                     send_midi_message("note_off", msg.note, source="live")
-                    stop_sound(msg.note, source="live")
+                    # stop_sound(msg.note, source="live") # Removed to allow live notes to ring out
     except Exception as e:
         print(f"[LiveMIDI] Exception in MIDI input thread: {e}")
 

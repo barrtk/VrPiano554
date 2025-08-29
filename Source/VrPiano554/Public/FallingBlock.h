@@ -37,6 +37,9 @@ public:
 	// The up vector of the key this block is falling towards
 	FVector TargetKeyUpVector;
 
+	// Stores half of the block's calculated height for positioning adjustments
+	float HalfHeight;
+
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UStaticMeshComponent* BlockMesh;
