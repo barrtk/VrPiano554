@@ -73,6 +73,10 @@ public:
     UPROPERTY(EditAnywhere, Category = "Falling Blocks")
     float TargetZHeight = 50.f;
 
+	/** The visual speed of the falling blocks, in Unreal Units per second. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falling Blocks", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float UnitsPerSecond = 100.0f;
+
     /** Port UDP do nasłuchiwania (np. 5005) */
     UPROPERTY(EditAnywhere, Category = "Networking")
     int32 ListenPort = 5008; // Changed port to 5008 to avoid conflict

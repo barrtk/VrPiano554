@@ -1,7 +1,6 @@
 #include "FallingBlock.h"
-#include "FallingBlockManager.h" // Include the manager header
+#include "FallingBlockManager.h"
 #include "Components/StaticMeshComponent.h"
-#include "Kismet/KismetMathLibrary.h"
 
 AFallingBlock::AFallingBlock()
 {
@@ -12,79 +11,64 @@ AFallingBlock::AFallingBlock()
 
 	MidiNote = 0;
     Manager = nullptr;
-    StartTime = 0.0f;
     TargetTime = 0.0f;
-    bHasReachedTarget = false;
-    BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
+	BlockScaleMultiplier = FVector(1.0f, 1.0f, 1.0f);
 }
 
 void AFallingBlock::BeginPlay()
 {
 	Super::BeginPlay();
+	// We disable ticking here and let the manager call our Tick function manually.
+	// This gives the manager more control over the update order.
+	SetActorTickEnabled(false);
 }
 
-void AFallingBlock::Initialize(AFallingBlockManager* InManager, const FVector& InSpawnLocation, const FVector& InTargetLocation, float InTargetTime, float InDuration, float InKeyWidth, int32 InMidiNote)
+void AFallingBlock::Initialize(AFallingBlockManager* InManager, float InTargetTime, float InDuration, float InKeyWidth, int32 InMidiNote)
 {
     Manager = InManager;
-    SpawnLocation = InSpawnLocation;
-    FinalTargetLocation = InTargetLocation;
     TargetTime = InTargetTime;
     MidiNote = InMidiNote;
-    bHasReachedTarget = false;
 
-    // The block starts falling LookaheadTime seconds before its target time.
-    if(Manager)
+    if (!Manager)
     {
-        StartTime = TargetTime - Manager->LookaheadTime;
+        return;
     }
 
-    // --- Dynamic Scaling Logic ---
-    // We need to calculate the visual speed to determine the block's length.
-    const float Distance = FVector::Dist(SpawnLocation, FinalTargetLocation);
-    float VisualSpeed = 0.0f;
-    if(Manager && Manager->LookaheadTime > 0)
-    {
-        VisualSpeed = Distance / Manager->LookaheadTime;
-    }
+	// --- Dynamic Scaling Logic ---
+	const float ScaleX = 0.08f;
+	const float Margin = 1.0f;
+	const float ScaleY = (InKeyWidth > Margin) ? (InKeyWidth - Margin) / 100.0f : 0.1f;
+	// The length of the block is its duration in seconds multiplied by the highway speed.
+	const float ScaleZ = (Manager->UnitsPerSecond * InDuration) / 100.0f; // 100.0f is the default mesh size
 
-	float ScaleX = 0.08f;
-	float Margin = 1.0f;
-	float ScaleY = (InKeyWidth > Margin) ? (InKeyWidth - Margin) / 100.0f : 0.1f;
-	float ScaleZ = (VisualSpeed > 0 && InDuration > 0) ? (VisualSpeed * InDuration) / 100.0f : 0.2f;
-
-	FVector FinalScale = FVector(ScaleX, ScaleY, ScaleZ) * BlockScaleMultiplier;
+	FVector FinalScale = FVector(ScaleX, ScaleY, FMath::Max(ScaleZ, 0.01f)) * BlockScaleMultiplier;
 	BlockMesh->SetWorldScale3D(FinalScale);
-
-    // Adjust the target location to account for the block's height so it stops at its edge.
-	const float HalfHeight = 50.0f * FinalScale.Z;
-	const FVector UpVector = GetActorUpVector();
-	FinalTargetLocation += (UpVector * HalfHeight);
 }
 
 void AFallingBlock::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+	// This Tick is called manually by the FallingBlockManager
 
-	if (!Manager || bHasReachedTarget)
+	if (!Manager)
 	{
 		return;
 	}
 
     const float CurrentMasterTime = Manager->GetCurrentSongTime();
 
-    // Check if we have reached or passed the target time, with a small tolerance for floating point errors.
-    if (CurrentMasterTime >= TargetTime || FMath::IsNearlyEqual(CurrentMasterTime, TargetTime))
-    {
-        // We've reached or passed the target time. Snap to the final location and stop ticking.
-        SetActorLocation(FinalTargetLocation);
-        bHasReachedTarget = true;
-    }
-    else if (CurrentMasterTime >= StartTime)
-    {
-        // We are in the falling phase. Calculate position based on time.
-        const float Alpha = UKismetMathLibrary::MapRangeClamped(CurrentMasterTime, StartTime, TargetTime, 0.0f, 1.0f);
-        const FVector NewLocation = FMath::Lerp(SpawnLocation, FinalTargetLocation, Alpha);
-        SetActorLocation(NewLocation);
-    }
-    // If CurrentMasterTime < StartTime, do nothing. The block waits "off-screen" until it's time to fall.
+	// Destroy the block if it's far past its target time.
+	// The grace period of 2 seconds ensures it's not destroyed while potentially still needed for learning mode.
+	if (CurrentMasterTime > TargetTime + 2.0f)
+	{
+		Destroy();
+		return;
+	}
+
+	// Calculate the Z offset based on the time difference and the highway speed.
+	const float TimeDiff = TargetTime - CurrentMasterTime;
+	const float ZOffset = TimeDiff * Manager->UnitsPerSecond;
+
+	// The final position is the key's base location plus the calculated Z offset.
+	const FVector NewLocation = TargetKeyLocation + (TargetKeyUpVector * ZOffset);
+	SetActorLocation(NewLocation);
 }
