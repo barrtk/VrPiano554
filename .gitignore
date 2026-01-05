@@ -1,14 +1,32 @@
-Binaries
-DerivedDataCache
-Intermediate
-Saved
-.vscode
-.vs
-*.VC.db
-*.opensdf
-*.opendb
-*.sdf
+# Unreal Engine 5 Git Ignore
+
+# Binaries
+Binaries/
+*/Binaries/
 *.sln
-*.suo
 *.xcodeproj
 *.xcworkspace
+*.suo
+*.opensdf
+*.sdf
+*.db
+*.opendb
+*.VC.db
+
+# Builds
+Build/
+Saved/
+Intermediate/
+DerivedDataCache/
+
+# Whitelist Content, Source, Config
+!Content/
+!Source/
+!Config/
+!Resources/
+!Script/
+
+# VS Code
+.vscode/
+.vs/
+.vsconfig
