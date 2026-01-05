@@ -193,7 +193,7 @@ void AFallingBlockManager::OnNotePlayed(int32 MidiNote)
     for (int32 i = ActiveBlocks.Num() - 1; i >= 0; --i)
     {
         AFallingBlock* Block = ActiveBlocks[i];
-        if (IsValid(Block) && Block->MidiNote == MidiNote && FMath::IsNearlyZero(Block->TargetTime - CurrentSongTime, 1e-2f))
+        if (IsValid(Block) && Block->MidiNote == MidiNote && FMath::IsNearlyZero(Block->TargetTime - CurrentSongTime, 0.05f))
         {
             Block->Destroy();
             ActiveBlocks.RemoveAt(i);
